@@ -151,8 +151,9 @@
   async function submitOrder(event) {
     event.preventDefault();
     if (!state.cart.length) return showError("order-error", "Pilih minimal satu barang sebelum mengirim pesanan.");
+    const formElement = event.currentTarget;
     const button = el("submit-order");
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     button.disabled = true;
     button.textContent = "Menyimpan…";
     showError("order-error", "");
@@ -172,7 +173,7 @@
       if (!response.ok) throw new Error(data.error || "Pesanan gagal disimpan.");
       state.cart = [];
       renderCart();
-      event.currentTarget.reset();
+      formElement.reset();
       el("note-count").textContent = "0/500";
       showSuccess(data);
     } catch (error) {

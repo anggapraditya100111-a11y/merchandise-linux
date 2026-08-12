@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 — 2026-08-12
+
+- Memperbaiki error `Cannot read properties of null (reading 'reset')` setelah order berhasil disimpan.
+- Form pemesan kini di-reset menggunakan referensi yang disimpan sebelum request asynchronous, sehingga popup nomor order dan tombol download PDF dapat muncul normal.
+- Ditambahkan tes regresi agar referensi `event.currentTarget` tidak digunakan lagi setelah proses asynchronous.
+
 ## 1.1.0 — 2026-08-12
 
 - Menu admin baru **Pengaturan** dengan submenu identitas dan tampilan aplikasi, Data PoP, serta Kategori.

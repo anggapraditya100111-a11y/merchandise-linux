@@ -6,6 +6,7 @@ const path = require("node:path");
 const root = path.join(__dirname, "..");
 const installer = fs.readFileSync(path.join(root, "install-casaos.sh"), "utf8");
 const updater = fs.readFileSync(path.join(root, "update.sh"), "utf8");
+const catalogScript = fs.readFileSync(path.join(root, "public", "app.js"), "utf8");
 
 test("installer dan updater memakai jalur paket raw GitHub", () => {
   for (const script of [installer, updater]) {
@@ -21,4 +22,10 @@ test("updater mempertahankan backup, health check, dan rollback", () => {
   assert.match(updater, /api\/health/);
   assert.match(updater, /source-rollback/);
   assert.match(updater, /old_image_id/);
+});
+
+test("form order menyimpan referensi sebelum request asynchronous", () => {
+  assert.match(catalogScript, /const formElement = event\.currentTarget;/);
+  assert.match(catalogScript, /formElement\.reset\(\);/);
+  assert.doesNotMatch(catalogScript, /event\.currentTarget\.reset\(\);/);
 });
