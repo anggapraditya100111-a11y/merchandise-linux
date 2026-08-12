@@ -6,14 +6,15 @@
   <meta name="theme-color" content="#0a3f8d">
   <title>AINET Merchandise</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/theme.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <header class="site-header">
     <div class="header-inner">
       <a class="brand" href="/" aria-label="AINET Merchandise">
-        <span class="brand-mark">AI</span>
-        <span><strong>AINET</strong><small>MERCHANDISE</small></span>
+        <span class="brand-mark" data-brand-mark>AI</span>
+        <span><strong data-app-name>AINET Merchandise</strong><small>MERCHANDISE</small></span>
       </a>
       <div class="header-actions">
         <a href="#keranjang" class="cart-shortcut">Keranjang <b id="cart-badge">0</b></a>
@@ -62,6 +63,7 @@
           <label><span>Nama pemesan</span><input name="customerName" minlength="2" maxlength="100" autocomplete="name" placeholder="Masukkan nama lengkap" required></label>
           <label><span>Asal PoP</span><select name="popId" id="pop-select" required><option value="">Pilih PoP</option></select></label>
           <label><span>Nomor WhatsApp</span><input name="whatsapp" type="tel" inputmode="tel" autocomplete="tel" placeholder="Contoh: 081234567890" required></label>
+          <label><span>Catatan <small id="note-count">0/500</small></span><textarea name="note" rows="4" maxlength="500" placeholder="Tambahkan catatan untuk admin jika diperlukan"></textarea></label>
           <p id="order-error" class="alert error hidden" role="alert"></p>
           <button id="submit-order" class="button primary wide" type="submit" disabled>Kirim pesanan <span>→</span></button>
           <p class="note">Tidak ada pembayaran di website. Pesanan hanya dicatat dan diteruskan kepada admin kantor pusat.</p>
@@ -70,7 +72,7 @@
     </div>
   </main>
 
-  <footer class="footer"><strong>AINET Merchandise</strong><span>Internal order catalog · PT Axindo Infinitas Network</span></footer>
+  <footer class="footer"><strong data-app-name>AINET Merchandise</strong><span id="footer-company">Internal order catalog · PT Axindo Infinitas Network</span></footer>
 
   <div id="success-backdrop" class="modal-backdrop hidden">
     <section class="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="success-title">

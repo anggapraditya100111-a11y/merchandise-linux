@@ -6,12 +6,13 @@
   <meta name="theme-color" content="#102039">
   <title>Admin · AINET Merchandise</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/theme.css">
   <script src="/admin.js" defer></script>
 </head>
 <body class="admin-body">
   <main id="login-view" class="login-shell">
     <form id="login-form" class="login-card">
-      <a class="brand" href="/"><span class="brand-mark">AI</span><span><strong>AINET</strong><small>MERCH ADMIN</small></span></a>
+      <a class="brand" href="/"><span class="brand-mark" data-brand-mark>AI</span><span><strong data-app-name>AINET Merchandise</strong><small>MERCH ADMIN</small></span></a>
       <div><span class="kicker">Kantor pusat</span><h1>Masuk ke panel admin</h1><p>Kelola barang, PoP, dan catatan pesanan merchandise.</p></div>
       <label><span>Username</span><input name="username" autocomplete="username" required></label>
       <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
@@ -23,11 +24,11 @@
 
   <main id="admin-view" class="admin-shell hidden">
     <aside class="sidebar">
-      <a class="brand admin-brand" href="/"><span class="brand-mark">AI</span><span><strong>AINET</strong><small>MERCH ADMIN</small></span></a>
+      <a class="brand admin-brand" href="/"><span class="brand-mark" data-brand-mark>AI</span><span><strong data-app-name>AINET Merchandise</strong><small>MERCH ADMIN</small></span></a>
       <nav aria-label="Menu admin">
         <button data-tab="orders" class="active">▤ <span>Pesanan</span></button>
         <button data-tab="products">□ <span>Data barang</span></button>
-        <button data-tab="pops">⌖ <span>Data PoP</span></button>
+        <button data-tab="settings">⚙ <span>Pengaturan</span></button>
         <button data-tab="maintenance">⚙ <span>Pemeliharaan</span></button>
       </nav>
       <div class="sidebar-user"><span id="admin-initial">A</span><div><strong id="admin-name">admin</strong><small>Administrator</small></div><button id="logout" aria-label="Keluar">↪</button></div>
@@ -55,10 +56,40 @@
         <div id="admin-products" class="admin-product-grid"></div>
       </section>
 
-      <section id="pops-tab" class="tab-panel hidden">
-        <div class="pop-layout">
-          <form id="pop-form" class="panel-form"><span class="kicker">Area kerja</span><h2>Tambah PoP</h2><label><span>Nama PoP</span><input name="name" placeholder="Contoh: PoP Semarang" required></label><button class="button primary" type="submit">+ Tambahkan PoP</button></form>
-          <div id="pop-list" class="pop-list"></div>
+      <section id="settings-tab" class="tab-panel hidden">
+        <div class="settings-layout">
+          <nav class="settings-subnav" aria-label="Submenu pengaturan">
+            <button class="active" data-settings-section="appearance">Identitas & tampilan</button>
+            <button data-settings-section="pops">Data PoP</button>
+            <button data-settings-section="categories">Kategori</button>
+          </nav>
+
+          <div class="settings-content">
+            <section id="appearance-settings" class="settings-section">
+              <form id="settings-form" class="panel-form settings-form">
+                <div><span class="kicker">Identitas aplikasi</span><h2>Nama, logo, dan warna</h2><p class="settings-intro">Perubahan diterapkan pada katalog, panel admin, dan PDF order.</p></div>
+                <div class="form-columns"><label><span>Nama aplikasi</span><input name="appName" maxlength="80" required></label><label><span>Nama perusahaan</span><input name="companyName" maxlength="120" required></label></div>
+                <div class="color-fields"><label><span>Warna utama</span><input name="primaryColor" type="color" required></label><label><span>Warna sekunder</span><input name="secondaryColor" type="color" required></label><label><span>Warna aksen</span><input name="accentColor" type="color" required></label></div>
+                <div class="logo-setting"><div id="logo-preview" class="logo-preview">AI</div><label><span>Logo aplikasi (JPG/PNG/WebP, maks. 5 MB)</span><input name="logo" type="file" accept="image/jpeg,image/png,image/webp"><small>Gunakan logo berbentuk persegi atau transparan agar tampil rapi.</small></label></div>
+                <label id="remove-logo-field" class="check-field hidden"><input name="removeLogo" type="checkbox"><span>Hapus logo saat ini dan gunakan ikon huruf</span></label>
+                <button class="button primary" type="submit">Simpan pengaturan</button>
+              </form>
+            </section>
+
+            <section id="pops-settings" class="settings-section hidden">
+              <div class="pop-layout">
+                <form id="pop-form" class="panel-form"><input type="hidden" name="id"><span class="kicker">Area kerja</span><h2 id="pop-form-title">Tambah PoP</h2><label><span>Nama PoP</span><input name="name" placeholder="Contoh: PoP Semarang" required></label><div class="form-actions"><button class="button primary" type="submit" id="pop-submit">+ Tambahkan PoP</button><button class="button secondary hidden" type="button" id="cancel-pop-edit">Batal</button></div></form>
+                <div id="pop-list" class="pop-list"></div>
+              </div>
+            </section>
+
+            <section id="categories-settings" class="settings-section hidden">
+              <div class="pop-layout">
+                <form id="category-form" class="panel-form"><input type="hidden" name="id"><span class="kicker">Kelompok barang</span><h2 id="category-form-title">Tambah kategori</h2><label><span>Nama kategori</span><input name="name" maxlength="60" placeholder="Contoh: Topi" required></label><div class="form-actions"><button class="button primary" type="submit" id="category-submit">+ Tambahkan kategori</button><button class="button secondary hidden" type="button" id="cancel-category-edit">Batal</button></div></form>
+                <div id="category-list" class="pop-list"></div>
+              </div>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -80,10 +111,12 @@
         <input type="hidden" name="id">
         <div class="form-columns"><label><span>SKU</span><input name="sku" placeholder="AIN-TS-001" required></label><label><span>Nama barang</span><input name="name" required></label></div>
         <label><span>Deskripsi</span><textarea name="description" rows="3" maxlength="500"></textarea></label>
-        <div class="form-columns"><label><span>Kategori</span><select name="category" required><option>Kaos</option><option>Baju</option><option>Sepatu</option><option>Aksesori</option><option>Lainnya</option></select></label><label><span>Harga</span><input name="price" type="number" min="0" step="1000" required></label></div>
+        <div class="form-columns"><label><span>Kategori</span><select name="category" required></select></label><label><span>Harga</span><input name="price" type="number" min="0" step="1000" required></label></div>
         <div class="form-columns"><label><span>Nama pilihan</span><input name="variantLabel" placeholder="Ukuran / Nomor sepatu"></label><label><span>Pilihan ukuran/nomor</span><input name="variants" placeholder="S, M, L, XL"></label></div>
         <p class="field-help">Pisahkan pilihan dengan koma. Contoh baju: S, M, L, XL. Contoh sepatu: 39, 40, 41, 42.</p>
-        <label><span>Gambar barang (JPG/PNG/WebP, maks. 5 MB)</span><input name="image" type="file" accept="image/jpeg,image/png,image/webp"></label>
+        <div id="existing-images-field" class="hidden"><span class="field-label">Foto tersimpan</span><div id="existing-images" class="existing-images"></div><p class="field-help">Centang foto yang ingin dihapus.</p></div>
+        <label><span>Tambah foto barang (maks. 5 foto; JPG/PNG/WebP, masing-masing maks. 5 MB)</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
+        <p id="image-limit-help" class="field-help">Anda dapat memilih hingga 5 foto sekaligus.</p>
         <label id="active-field" class="check-field hidden"><input name="active" type="checkbox" checked><span>Barang aktif dan tampil di katalog</span></label>
         <button class="button primary wide" type="submit">Simpan barang</button>
       </form>

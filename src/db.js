@@ -75,6 +75,12 @@ function initDatabase() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS categories (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY,
       sku TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -89,6 +95,15 @@ function initDatabase() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS product_images (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      filename TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      UNIQUE(product_id, filename),
+      UNIQUE(product_id, position)
+    );
     CREATE TABLE IF NOT EXISTS order_sequence (
       day TEXT PRIMARY KEY,
       last_number INTEGER NOT NULL
@@ -100,6 +115,7 @@ function initDatabase() {
       pop_id TEXT,
       pop_name TEXT NOT NULL,
       whatsapp TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
       total INTEGER NOT NULL,
       pdf_token TEXT NOT NULL,
       created_at TEXT NOT NULL
@@ -119,7 +135,11 @@ function initDatabase() {
     );
     CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
+    CREATE INDEX IF NOT EXISTS idx_product_images_product_id ON product_images(product_id, position);
   `);
+
+  const orderColumns = new Set(db.prepare("PRAGMA table_info(orders)").all().map((column) => column.name));
+  if (!orderColumns.has("note")) db.exec("ALTER TABLE orders ADD COLUMN note TEXT NOT NULL DEFAULT ''");
 
   const timestamp = nowIso();
   const adminCount = db.prepare("SELECT COUNT(*) AS total FROM admins").get().total;
@@ -165,9 +185,28 @@ function initDatabase() {
     }
   }
 
+  const categoryInsert = db.prepare("INSERT OR IGNORE INTO categories (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)");
+  const categoryNames = new Set([
+    "Kaos", "Baju", "Sepatu", "Aksesori", "Lainnya",
+    ...db.prepare("SELECT DISTINCT category FROM products WHERE TRIM(category) <> ''").all().map((row) => row.category),
+  ]);
+  for (const name of categoryNames) categoryInsert.run(id("cat"), name, timestamp, timestamp);
+
+  const legacyImages = db.prepare(`
+    SELECT id, image_filename FROM products
+    WHERE image_filename IS NOT NULL AND TRIM(image_filename) <> ''
+      AND NOT EXISTS (SELECT 1 FROM product_images WHERE product_id = products.id)
+  `).all();
+  const imageInsert = db.prepare("INSERT INTO product_images (id, product_id, filename, position, created_at) VALUES (?, ?, ?, 0, ?)");
+  for (const product of legacyImages) imageInsert.run(id("img"), product.id, product.image_filename, timestamp);
+
   const setting = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
   setting.run("app_name", process.env.APP_NAME || "AINET Merchandise");
   setting.run("company_name", process.env.COMPANY_NAME || "PT Axindo Infinitas Network");
+  setting.run("primary_color", "#0a3f8d");
+  setting.run("secondary_color", "#1554af");
+  setting.run("accent_color", "#f79b35");
+  setting.run("logo_filename", "");
   return db;
 }
 
@@ -180,7 +219,23 @@ function parseVariants(value) {
   }
 }
 
+function productImages(productId) {
+  return getDatabase().prepare("SELECT * FROM product_images WHERE product_id = ? ORDER BY position, rowid").all(productId).map((row) => ({
+    id: row.id,
+    url: `/uploads/${encodeURIComponent(row.filename)}`,
+    filename: row.filename,
+    position: Number(row.position),
+  }));
+}
+
 function productRow(row) {
+  const images = productImages(row.id);
+  const primaryImage = images[0] || (row.image_filename ? {
+    id: null,
+    url: `/uploads/${encodeURIComponent(row.image_filename)}`,
+    filename: row.image_filename,
+    position: 0,
+  } : null);
   return {
     id: row.id,
     sku: row.sku,
@@ -190,8 +245,9 @@ function productRow(row) {
     price: Number(row.price),
     variantLabel: row.variant_label || null,
     variants: parseVariants(row.variants_json),
-    imageUrl: row.image_filename ? `/uploads/${encodeURIComponent(row.image_filename)}` : null,
-    imageFilename: row.image_filename || null,
+    images,
+    imageUrl: primaryImage?.url || null,
+    imageFilename: primaryImage?.filename || null,
     active: Boolean(row.active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -213,25 +269,47 @@ function saveProduct(input, productId = null) {
   const timestamp = nowIso();
   const variants = Array.from(new Set((input.variants || []).map((value) => String(value).trim()).filter(Boolean)));
   const variantLabel = variants.length ? String(input.variantLabel || "Ukuran").trim() : null;
-  if (productId) {
-    const current = getProduct(productId);
-    if (!current) return null;
-    const imageFilename = input.imageFilename === undefined ? current.imageFilename : input.imageFilename;
-    db.prepare(`
-      UPDATE products SET sku = ?, name = ?, description = ?, category = ?, price = ?, variant_label = ?,
-        variants_json = ?, image_filename = ?, active = ?, updated_at = ? WHERE id = ?
-    `).run(input.sku, input.name, input.description, input.category, input.price, variantLabel,
-      JSON.stringify(variants), imageFilename || null, input.active === false ? 0 : 1, timestamp, productId);
-    return getProduct(productId);
+  const newImages = Array.from(new Set((input.imageFilenames || []).map(String).filter(Boolean)));
+  if (newImages.length > 5) throw new Error("Gambar barang maksimal 5 foto.");
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    let targetId = productId;
+    let existingImages = [];
+    if (productId) {
+      const current = getProduct(productId);
+      if (!current) {
+        db.exec("ROLLBACK");
+        return null;
+      }
+      const removed = new Set((input.removeImageIds || []).map(String));
+      existingImages = current.images.filter((image) => !removed.has(image.id));
+      if (existingImages.length + newImages.length > 5) throw new Error("Total gambar barang maksimal 5 foto.");
+      db.prepare(`
+        UPDATE products SET sku = ?, name = ?, description = ?, category = ?, price = ?, variant_label = ?,
+          variants_json = ?, active = ?, updated_at = ? WHERE id = ?
+      `).run(input.sku, input.name, input.description, input.category, input.price, variantLabel,
+        JSON.stringify(variants), input.active === false ? 0 : 1, timestamp, productId);
+      db.prepare("DELETE FROM product_images WHERE product_id = ?").run(productId);
+    } else {
+      targetId = id("prd");
+      db.prepare(`
+        INSERT INTO products
+          (id, sku, name, description, category, price, variant_label, variants_json, image_filename, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?, ?)
+      `).run(targetId, input.sku, input.name, input.description, input.category, input.price, variantLabel,
+        JSON.stringify(variants), timestamp, timestamp);
+    }
+
+    const filenames = [...existingImages.map((image) => image.filename), ...newImages];
+    const insertImage = db.prepare("INSERT INTO product_images (id, product_id, filename, position, created_at) VALUES (?, ?, ?, ?, ?)");
+    filenames.forEach((filename, position) => insertImage.run(id("img"), targetId, filename, position, timestamp));
+    db.prepare("UPDATE products SET image_filename = ? WHERE id = ?").run(filenames[0] || null, targetId);
+    db.exec("COMMIT");
+    return getProduct(targetId);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
-  const newId = id("prd");
-  db.prepare(`
-    INSERT INTO products
-      (id, sku, name, description, category, price, variant_label, variants_json, image_filename, active, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-  `).run(newId, input.sku, input.name, input.description, input.category, input.price, variantLabel,
-    JSON.stringify(variants), input.imageFilename || null, timestamp, timestamp);
-  return getProduct(newId);
 }
 
 function deactivateProduct(productId) {
@@ -251,8 +329,55 @@ function addPop(name) {
   return { id: popId, name, active: true };
 }
 
+function updatePop(popId, name) {
+  const result = getDatabase().prepare("UPDATE pops SET name = ?, updated_at = ? WHERE id = ?").run(name, nowIso(), popId);
+  return result.changes ? listPops().find((pop) => pop.id === popId) : null;
+}
+
 function deactivatePop(popId) {
   return getDatabase().prepare("UPDATE pops SET active = 0, updated_at = ? WHERE id = ?").run(nowIso(), popId).changes > 0;
+}
+
+function listCategories() {
+  return getDatabase().prepare("SELECT * FROM categories ORDER BY name COLLATE NOCASE").all().map((row) => ({ id: row.id, name: row.name }));
+}
+
+function findCategoryByName(name) {
+  const row = getDatabase().prepare("SELECT * FROM categories WHERE name = ? COLLATE NOCASE").get(name);
+  return row ? { id: row.id, name: row.name } : null;
+}
+
+function addCategory(name) {
+  const timestamp = nowIso();
+  const categoryId = id("cat");
+  getDatabase().prepare("INSERT INTO categories (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)")
+    .run(categoryId, name, timestamp, timestamp);
+  return { id: categoryId, name };
+}
+
+function updateCategory(categoryId, name) {
+  const db = getDatabase();
+  const current = db.prepare("SELECT * FROM categories WHERE id = ?").get(categoryId);
+  if (!current) return null;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("UPDATE categories SET name = ?, updated_at = ? WHERE id = ?").run(name, nowIso(), categoryId);
+    db.prepare("UPDATE products SET category = ?, updated_at = ? WHERE category = ? COLLATE NOCASE").run(name, nowIso(), current.name);
+    db.exec("COMMIT");
+    return { id: categoryId, name };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function deleteCategory(categoryId) {
+  const db = getDatabase();
+  const category = db.prepare("SELECT * FROM categories WHERE id = ?").get(categoryId);
+  if (!category) return false;
+  const products = db.prepare("SELECT COUNT(*) AS total FROM products WHERE category = ? COLLATE NOCASE").get(category.name).total;
+  if (products) throw new Error("Kategori masih digunakan oleh barang. Pindahkan kategori barang terlebih dahulu.");
+  return db.prepare("DELETE FROM categories WHERE id = ?").run(categoryId).changes > 0;
 }
 
 function getSettings() {
@@ -260,7 +385,38 @@ function getSettings() {
   return {
     appName: values.app_name || "AINET Merchandise",
     companyName: values.company_name || "PT Axindo Infinitas Network",
+    primaryColor: values.primary_color || "#0a3f8d",
+    secondaryColor: values.secondary_color || "#1554af",
+    accentColor: values.accent_color || "#f79b35",
+    logoFilename: values.logo_filename || null,
+    logoUrl: values.logo_filename ? `/uploads/${encodeURIComponent(values.logo_filename)}` : null,
   };
+}
+
+function updateSettings(input) {
+  const db = getDatabase();
+  const current = getSettings();
+  const values = {
+    app_name: input.appName ?? current.appName,
+    company_name: input.companyName ?? current.companyName,
+    primary_color: input.primaryColor ?? current.primaryColor,
+    secondary_color: input.secondaryColor ?? current.secondaryColor,
+    accent_color: input.accentColor ?? current.accentColor,
+    logo_filename: input.logoFilename === undefined ? (current.logoFilename || "") : (input.logoFilename || ""),
+  };
+  const statement = db.prepare(`
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const [key, value] of Object.entries(values)) statement.run(key, String(value));
+    db.exec("COMMIT");
+    return getSettings();
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 function createOrder(input) {
@@ -298,9 +454,9 @@ function createOrder(input) {
     const total = items.reduce((sum, item) => sum + item.subtotal, 0);
     const createdAt = nowIso();
     db.prepare(`
-      INSERT INTO orders (id, order_number, customer_name, pop_id, pop_name, whatsapp, total, pdf_token, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(orderId, orderNumber, input.customerName, pop.id, pop.name, input.whatsapp, total, pdfToken, createdAt);
+      INSERT INTO orders (id, order_number, customer_name, pop_id, pop_name, whatsapp, note, total, pdf_token, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(orderId, orderNumber, input.customerName, pop.id, pop.name, input.whatsapp, input.note || "", total, pdfToken, createdAt);
     const insertItem = db.prepare(`
       INSERT INTO order_items
         (id, order_id, product_id, sku, product_name, variant_label, variant_value, image_filename, unit_price, quantity, subtotal)
@@ -342,6 +498,7 @@ function orderRow(row, includeToken = false) {
     popId: row.pop_id,
     popName: row.pop_name,
     whatsapp: row.whatsapp,
+    note: row.note || "",
     total: Number(row.total),
     createdAt: row.created_at,
     items: orderItems(row.id),
@@ -395,8 +552,15 @@ module.exports = {
   deactivateProduct,
   listPops,
   addPop,
+  updatePop,
   deactivatePop,
+  listCategories,
+  findCategoryByName,
+  addCategory,
+  updateCategory,
+  deleteCategory,
   getSettings,
+  updateSettings,
   createOrder,
   getOrderByNumber,
   listOrders,

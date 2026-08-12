@@ -28,9 +28,18 @@ function renderOrderPdf(res, order, settings) {
   res.setHeader("Content-Disposition", `attachment; filename="order-${order.orderNumber}.pdf"`);
   doc.pipe(res);
 
-  doc.rect(0, 0, 595.28, 128).fill("#0a3f8d");
-  doc.fillColor("#ffffff").fontSize(22).font("Helvetica-Bold").text(settings.appName, 42, 38);
-  doc.fontSize(9).font("Helvetica").fillColor("#c9dbf5").text(settings.companyName.toUpperCase(), 42, 68, { characterSpacing: 1.2 });
+  const primaryColor = settings.primaryColor || "#0a3f8d";
+  doc.rect(0, 0, 595.28, 128).fill(primaryColor);
+  const logoPath = safeImage(settings.logoFilename);
+  let brandX = 42;
+  if (logoPath) {
+    try {
+      doc.image(logoPath, 42, 31, { fit: [52, 52], align: "center", valign: "center" });
+      brandX = 108;
+    } catch {}
+  }
+  doc.fillColor("#ffffff").fontSize(22).font("Helvetica-Bold").text(settings.appName, brandX, 38, { width: 220 });
+  doc.fontSize(9).font("Helvetica").fillColor("#c9dbf5").text(settings.companyName.toUpperCase(), brandX, 68, { width: 220, characterSpacing: 1.2 });
   doc.fontSize(10).fillColor("#ffffff").text("BUKTI PEMESANAN MERCHANDISE", 340, 43, { width: 213, align: "right" });
   doc.fontSize(16).font("Helvetica-Bold").text(order.orderNumber, 330, 65, { width: 223, align: "right" });
 
@@ -46,6 +55,13 @@ function renderOrderPdf(res, order, settings) {
     doc.font("Helvetica").fontSize(9).fillColor("#657289").text(label, 42, y, { width: 105 });
     doc.font("Helvetica-Bold").fillColor("#102039").text(String(value), 150, y, { width: 402 });
     y += 20;
+  }
+
+  if (order.note) {
+    const noteHeight = Math.min(76, doc.heightOfString(order.note, { width: 402 }));
+    doc.font("Helvetica").fontSize(9).fillColor("#657289").text("Catatan", 42, y, { width: 105 });
+    doc.font("Helvetica").fillColor("#102039").text(order.note, 150, y, { width: 402, height: noteHeight, ellipsis: true });
+    y += Math.max(22, noteHeight + 6);
   }
 
   y += 15;
@@ -83,7 +99,7 @@ function renderOrderPdf(res, order, settings) {
   }
   doc.moveTo(350, y + 7).lineTo(553, y + 7).strokeColor("#dfe5ee").stroke();
   doc.fillColor("#657289").font("Helvetica").fontSize(10).text("Total nominal", 350, y + 22);
-  doc.fillColor("#0a3f8d").font("Helvetica-Bold").fontSize(18).text(rupiah(order.total), 400, y + 17, { width: 153, align: "right" });
+  doc.fillColor(primaryColor).font("Helvetica-Bold").fontSize(18).text(rupiah(order.total), 400, y + 17, { width: 153, align: "right" });
   doc.fillColor("#657289").font("Helvetica").fontSize(8.5)
     .text("Dokumen ini adalah bukti pencatatan order dan bukan bukti pembayaran. Silakan konfirmasi kepada admin kantor pusat.", 42, 760, { width: 511, align: "center" });
   doc.end();

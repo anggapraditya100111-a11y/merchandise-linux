@@ -46,7 +46,11 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(cookieParser());
 app.use("/uploads", express.static(db.UPLOAD_DIR, { immutable: false, maxAge: "1h", dotfiles: "deny" }));
-app.use(express.static(PUBLIC_DIR, { extensions: ["html"], maxAge: "5m" }));
+app.get("/theme.css", (_req, res) => {
+  const settings = db.getSettings();
+  res.type("text/css").set("Cache-Control", "no-store").send(`:root{--blue:${settings.primaryColor};--blue2:${settings.secondaryColor};--orange:${settings.accentColor}}`);
+});
+app.use(express.static(PUBLIC_DIR, { extensions: ["html"], maxAge: 0 }));
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false });
 const orderLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 25, standardHeaders: true, legacyHeaders: false });
@@ -60,7 +64,7 @@ const imageStorage = multer.diskStorage({
 });
 const imageUpload = multer({
   storage: imageStorage,
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 5 },
   fileFilter: (_req, file, callback) => callback(null, ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)),
 });
 const restoreUpload = multer({
@@ -92,23 +96,48 @@ function variants(value) {
   return String(value || "").split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
 }
 
+function stringList(value) {
+  if (Array.isArray(value)) return value.map(String);
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return String(value).split(",").map((item) => item.trim()).filter(Boolean);
+  }
+}
+
+function hexColor(value, label) {
+  const result = String(value || "").trim().toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(result)) throw new Error(`${label} tidak valid.`);
+  return result;
+}
+
+function categoryName(value) {
+  const requested = text(value, 2, 60, "Kategori");
+  const category = db.findCategoryByName(requested);
+  if (!category) throw new Error("Kategori tidak tersedia.");
+  return category.name;
+}
+
 function productInput(req) {
   return {
     sku: text(req.body.sku, 2, 40, "SKU"),
     name: text(req.body.name, 2, 120, "Nama barang"),
     description: String(req.body.description || "").trim().slice(0, 500),
-    category: text(req.body.category, 2, 60, "Kategori"),
+    category: categoryName(req.body.category),
     price: price(req.body.price),
     variantLabel: String(req.body.variantLabel || "").trim().slice(0, 60),
     variants: variants(req.body.variants),
-    imageFilename: req.file?.filename,
+    imageFilenames: (req.files || []).map((file) => file.filename),
+    removeImageIds: stringList(req.body.removeImageIds),
     active: String(req.body.active || "true") !== "false",
   };
 }
 
 function errorResponse(res, error, fallback = "Permintaan tidak dapat diproses.") {
   const message = error instanceof Error ? error.message : fallback;
-  const known = /harus|tidak valid|tidak tersedia|sudah|kosong|dikenali|integritas|path|PoP|barang/i.test(message);
+  const known = /harus|maksimal|tidak valid|tidak tersedia|sudah|kosong|dikenali|integritas|path|PoP|barang|kategori|gambar|warna|catatan|UNIQUE/i.test(message);
   return res.status(known ? 400 : 500).json({ error: known ? message : fallback });
 }
 
@@ -124,13 +153,16 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/catalog", (_req, res) => {
   res.json({ products: db.listProducts({ activeOnly: true }), pops: db.listPops({ activeOnly: true }), settings: db.getSettings() });
 });
+app.get("/api/settings", (_req, res) => res.json({ settings: db.getSettings() }));
 
 app.post("/api/orders", orderLimiter, auth.rejectCrossSite, (req, res) => {
   try {
     const customerName = text(req.body.customerName, 2, 100, "Nama pemesan");
     const popId = text(req.body.popId, 4, 100, "PoP");
     const items = Array.isArray(req.body.items) ? req.body.items : [];
-    const order = db.createOrder({ customerName, popId, whatsapp: whatsapp(req.body.whatsapp), items });
+    const note = String(req.body.note || "").trim();
+    if (note.length > 500) throw new Error("Catatan maksimal 500 karakter.");
+    const order = db.createOrder({ customerName, popId, whatsapp: whatsapp(req.body.whatsapp), note, items });
     res.status(201).json({
       order,
       message: "Selanjutnya Anda dapat melakukan konfirmasi ke admin untuk pemesanan.",
@@ -170,25 +202,25 @@ app.delete("/api/admin/session", auth.rejectCrossSite, (_req, res) => {
 app.get("/api/admin/orders", auth.requireAdmin, (_req, res) => res.json({ orders: db.listOrders() }));
 app.get("/api/admin/products", auth.requireAdmin, (_req, res) => res.json({ products: db.listProducts() }));
 app.get("/api/admin/pops", auth.requireAdmin, (_req, res) => res.json({ pops: db.listPops() }));
+app.get("/api/admin/categories", auth.requireAdmin, (_req, res) => res.json({ categories: db.listCategories() }));
+app.get("/api/admin/settings", auth.requireAdmin, (_req, res) => res.json({ settings: db.getSettings() }));
 
-app.post("/api/admin/products", auth.requireAdmin, auth.rejectCrossSite, imageUpload.single("image"), (req, res) => {
+app.post("/api/admin/products", auth.requireAdmin, auth.rejectCrossSite, imageUpload.array("images", 5), (req, res) => {
   try {
     res.status(201).json({ product: db.saveProduct(productInput(req)) });
   } catch (error) {
-    if (req.file) fs.rmSync(req.file.path, { force: true });
+    for (const file of req.files || []) fs.rmSync(file.path, { force: true });
     errorResponse(res, error, "Barang gagal ditambahkan.");
   }
 });
 
-app.put("/api/admin/products/:id", auth.requireAdmin, auth.rejectCrossSite, imageUpload.single("image"), (req, res) => {
+app.put("/api/admin/products/:id", auth.requireAdmin, auth.rejectCrossSite, imageUpload.array("images", 5), (req, res) => {
   try {
     const current = db.getProduct(req.params.id);
     if (!current) return res.status(404).json({ error: "Barang tidak ditemukan." });
-    const input = productInput(req);
-    if (!req.file) input.imageFilename = undefined;
-    res.json({ product: db.saveProduct(input, req.params.id) });
+    res.json({ product: db.saveProduct(productInput(req), req.params.id) });
   } catch (error) {
-    if (req.file) fs.rmSync(req.file.path, { force: true });
+    for (const file of req.files || []) fs.rmSync(file.path, { force: true });
     errorResponse(res, error, "Barang gagal diperbarui.");
   }
 });
@@ -206,9 +238,64 @@ app.post("/api/admin/pops", auth.requireAdmin, auth.rejectCrossSite, (req, res) 
   }
 });
 
+app.put("/api/admin/pops/:id", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try {
+    const pop = db.updatePop(req.params.id, text(req.body.name, 2, 100, "Nama PoP"));
+    if (!pop) return res.status(404).json({ error: "PoP tidak ditemukan." });
+    res.json({ pop });
+  } catch (error) {
+    errorResponse(res, error, "PoP gagal diperbarui.");
+  }
+});
+
 app.delete("/api/admin/pops/:id", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
   if (!db.deactivatePop(req.params.id)) return res.status(404).json({ error: "PoP tidak ditemukan." });
   res.status(204).end();
+});
+
+app.post("/api/admin/categories", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try {
+    res.status(201).json({ category: db.addCategory(text(req.body.name, 2, 60, "Nama kategori")) });
+  } catch (error) {
+    errorResponse(res, error, "Kategori gagal ditambahkan.");
+  }
+});
+
+app.put("/api/admin/categories/:id", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try {
+    const category = db.updateCategory(req.params.id, text(req.body.name, 2, 60, "Nama kategori"));
+    if (!category) return res.status(404).json({ error: "Kategori tidak ditemukan." });
+    res.json({ category });
+  } catch (error) {
+    errorResponse(res, error, "Kategori gagal diperbarui.");
+  }
+});
+
+app.delete("/api/admin/categories/:id", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try {
+    if (!db.deleteCategory(req.params.id)) return res.status(404).json({ error: "Kategori tidak ditemukan." });
+    res.status(204).end();
+  } catch (error) {
+    errorResponse(res, error, "Kategori gagal dihapus.");
+  }
+});
+
+app.put("/api/admin/settings", auth.requireAdmin, auth.rejectCrossSite, imageUpload.single("logo"), (req, res) => {
+  try {
+    const input = {
+      appName: text(req.body.appName, 2, 80, "Nama aplikasi"),
+      companyName: text(req.body.companyName, 2, 120, "Nama perusahaan"),
+      primaryColor: hexColor(req.body.primaryColor, "Warna utama"),
+      secondaryColor: hexColor(req.body.secondaryColor, "Warna sekunder"),
+      accentColor: hexColor(req.body.accentColor, "Warna aksen"),
+    };
+    if (req.file) input.logoFilename = req.file.filename;
+    else if (String(req.body.removeLogo || "false") === "true") input.logoFilename = null;
+    res.json({ settings: db.updateSettings(input) });
+  } catch (error) {
+    if (req.file) fs.rmSync(req.file.path, { force: true });
+    errorResponse(res, error, "Pengaturan gagal disimpan.");
+  }
 });
 
 app.post("/api/admin/password", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {

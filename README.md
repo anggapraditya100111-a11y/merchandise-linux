@@ -6,11 +6,13 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 
 - Katalog publik tanpa login.
 - Keranjang belanja tanpa sistem pembayaran.
-- Nama pemesan, asal PoP, dan nomor WhatsApp.
+- Nama pemesan, asal PoP, nomor WhatsApp, dan catatan opsional maksimal 500 karakter.
 - Pilihan ukuran baju, nomor sepatu, atau varian lain langsung pada setiap barang.
 - Popup setelah order berhasil dengan pesan konfirmasi dan nomor order otomatis.
 - Download PDF order lengkap dengan gambar barang, ukuran/nomor, jumlah, harga, dan total nominal.
-- Panel admin untuk pesanan, barang, gambar, varian, dan daftar PoP.
+- Panel admin untuk pesanan, barang, galeri maksimal 5 foto, varian, kategori, dan daftar PoP.
+- Pengaturan nama aplikasi, nama perusahaan, logo, serta warna tampilan.
+- Slider gambar untuk setiap produk di katalog.
 - Rekap order CSV; tidak ada status pesanan.
 - Backup/restore lengkap untuk database SQLite dan seluruh gambar.
 - Mendukung `amd64` dan `arm64` melalui Docker.
@@ -127,15 +129,15 @@ docker compose config --quiet
 docker build -t ainet-merchandise:test .
 ```
 
-Test otomatis memeriksa katalog, validasi ukuran, pembuatan order, PDF, login admin, backup, restore, dan perlindungan path paket backup.
+Test otomatis memeriksa katalog, kategori, galeri lima foto, pengaturan identitas/warna, catatan order, PDF, login admin, backup, restore, dan perlindungan path paket backup.
 
 ## Rilis image
 
 Push tag versi untuk membangun image multi-arsitektur melalui GitHub Actions:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 Workflow menerbitkan `ghcr.io/anggapraditya100111-a11y/ainet-merchandise:latest`. Pastikan package GHCR diatur menjadi **Public** sebelum menggunakan `docker-compose.casaos.yml`.

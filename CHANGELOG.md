@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 — 2026-08-12
+
+- Menu admin baru **Pengaturan** dengan submenu identitas dan tampilan aplikasi, Data PoP, serta Kategori.
+- Nama aplikasi, nama perusahaan, logo, warna utama, warna sekunder, dan warna aksen dapat diubah dari panel admin.
+- Kategori dapat ditambah, diedit, dan dihapus; kategori yang masih dipakai barang dilindungi dari penghapusan.
+- Data PoP dipindahkan ke Pengaturan dan nama PoP kini dapat diedit.
+- Setiap barang mendukung maksimal lima foto, termasuk pengelolaan foto lama ketika barang diedit.
+- Foto produk ditampilkan sebagai slider pada kartu katalog.
+- Form pemesan memiliki catatan opsional maksimal 500 karakter; catatan tersimpan di admin, rekap CSV, popup, dan PDF order.
+- Migrasi database otomatis menjaga kompatibilitas data, gambar, order, serta backup dari versi sebelumnya.
+- Cache aset publik dinonaktifkan agar tampilan terbaru langsung termuat setelah update CasaOS.
+
 ## 1.0.2 — 2026-08-12
 
 - Tampilan katalog dan panel admin kembali termuat saat CasaOS diakses melalui HTTP/IP lokal.
