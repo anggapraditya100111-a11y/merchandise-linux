@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102039">
+  <title>Admin · AINET Merchandise</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body class="admin-body">
+  <main id="login-view" class="login-shell">
+    <form id="login-form" class="login-card">
+      <a class="brand" href="/"><span class="brand-mark">AI</span><span><strong>AINET</strong><small>MERCH ADMIN</small></span></a>
+      <div><span class="kicker">Kantor pusat</span><h1>Masuk ke panel admin</h1><p>Kelola barang, PoP, dan catatan pesanan merchandise.</p></div>
+      <label><span>Username</span><input name="username" autocomplete="username" required></label>
+      <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="alert error hidden" role="alert"></p>
+      <button class="button primary wide" type="submit">Masuk</button>
+      <a href="/" class="back-link">← Kembali ke katalog</a>
+    </form>
+  </main>
+
+  <main id="admin-view" class="admin-shell hidden">
+    <aside class="sidebar">
+      <a class="brand admin-brand" href="/"><span class="brand-mark">AI</span><span><strong>AINET</strong><small>MERCH ADMIN</small></span></a>
+      <nav aria-label="Menu admin">
+        <button data-tab="orders" class="active">▤ <span>Pesanan</span></button>
+        <button data-tab="products">□ <span>Data barang</span></button>
+        <button data-tab="pops">⌖ <span>Data PoP</span></button>
+        <button data-tab="maintenance">⚙ <span>Pemeliharaan</span></button>
+      </nav>
+      <div class="sidebar-user"><span id="admin-initial">A</span><div><strong id="admin-name">admin</strong><small>Administrator</small></div><button id="logout" aria-label="Keluar">↪</button></div>
+    </aside>
+
+    <section class="admin-content">
+      <header class="admin-topbar">
+        <div><span class="kicker">Kantor pusat</span><h1 id="page-title">Daftar pesanan</h1></div>
+        <a class="button secondary" href="/">Lihat katalog</a>
+      </header>
+      <p id="admin-message" class="alert success hidden" role="status"></p>
+
+      <section id="orders-tab" class="tab-panel">
+        <div class="metrics">
+          <article><span>Total pesanan</span><strong id="metric-orders">0</strong></article>
+          <article><span>Pesanan hari ini</span><strong id="metric-today">0</strong></article>
+          <article><span>Nominal bulan ini</span><strong id="metric-month">Rp0</strong></article>
+        </div>
+        <div class="admin-toolbar"><label class="search"><input id="order-search" type="search" placeholder="Cari nomor order, nama, PoP, WA…"></label><button id="export-orders" class="button secondary">↓ Unduh rekap CSV</button></div>
+        <div class="table-wrap"><table><thead><tr><th>No. order</th><th>Tanggal</th><th>Pemesan</th><th>PoP</th><th>Barang</th><th>Total</th><th></th></tr></thead><tbody id="orders-body"></tbody></table></div>
+      </section>
+
+      <section id="products-tab" class="tab-panel hidden">
+        <div class="admin-toolbar"><div><span class="kicker" id="active-products">0 barang aktif</span><h2>Katalog merchandise</h2></div><button id="add-product" class="button primary">+ Tambah barang</button></div>
+        <div id="admin-products" class="admin-product-grid"></div>
+      </section>
+
+      <section id="pops-tab" class="tab-panel hidden">
+        <div class="pop-layout">
+          <form id="pop-form" class="panel-form"><span class="kicker">Area kerja</span><h2>Tambah PoP</h2><label><span>Nama PoP</span><input name="name" placeholder="Contoh: PoP Semarang" required></label><button class="button primary" type="submit">+ Tambahkan PoP</button></form>
+          <div id="pop-list" class="pop-list"></div>
+        </div>
+      </section>
+
+      <section id="maintenance-tab" class="tab-panel hidden">
+        <div class="maintenance-grid">
+          <article class="maintenance-card"><span class="kicker">Perlindungan data</span><h2>Backup lengkap</h2><p>Unduh database, seluruh order, data barang, PoP, dan gambar produk dalam satu paket <code>.merchbackup</code>.</p><button id="create-backup" class="button primary">↓ Buat & download backup</button></article>
+          <article class="maintenance-card warning"><span class="kicker">Pemulihan data</span><h2>Restore backup</h2><p>Restore akan memvalidasi paket, membuat rollback internal, lalu mengganti isi database dan gambar tanpa memindahkan folder volume Docker.</p><form id="restore-form"><label><span>File backup</span><input name="backup" type="file" accept=".merchbackup,.zip" required></label><button class="button danger" type="submit">Restore data</button></form></article>
+          <article class="maintenance-card"><span class="kicker">Keamanan admin</span><h2>Ubah password</h2><form id="password-form"><label><span>Password saat ini</span><input name="currentPassword" type="password" required></label><label><span>Password baru</span><input name="newPassword" type="password" minlength="12" required></label><small>Minimal 12 karakter, berisi huruf besar, huruf kecil, dan angka.</small><button class="button secondary" type="submit">Simpan password</button></form></article>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div id="product-modal" class="modal-backdrop hidden">
+    <section class="modal product-modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-title">
+      <button class="icon-button modal-close" data-close-modal="product-modal" aria-label="Tutup">×</button>
+      <span class="kicker">Data merchandise</span><h2 id="product-modal-title">Tambah barang</h2>
+      <form id="product-form" class="product-form">
+        <input type="hidden" name="id">
+        <div class="form-columns"><label><span>SKU</span><input name="sku" placeholder="AIN-TS-001" required></label><label><span>Nama barang</span><input name="name" required></label></div>
+        <label><span>Deskripsi</span><textarea name="description" rows="3" maxlength="500"></textarea></label>
+        <div class="form-columns"><label><span>Kategori</span><select name="category" required><option>Kaos</option><option>Baju</option><option>Sepatu</option><option>Aksesori</option><option>Lainnya</option></select></label><label><span>Harga</span><input name="price" type="number" min="0" step="1000" required></label></div>
+        <div class="form-columns"><label><span>Nama pilihan</span><input name="variantLabel" placeholder="Ukuran / Nomor sepatu"></label><label><span>Pilihan ukuran/nomor</span><input name="variants" placeholder="S, M, L, XL"></label></div>
+        <p class="field-help">Pisahkan pilihan dengan koma. Contoh baju: S, M, L, XL. Contoh sepatu: 39, 40, 41, 42.</p>
+        <label><span>Gambar barang (JPG/PNG/WebP, maks. 5 MB)</span><input name="image" type="file" accept="image/jpeg,image/png,image/webp"></label>
+        <label id="active-field" class="check-field hidden"><input name="active" type="checkbox" checked><span>Barang aktif dan tampil di katalog</span></label>
+        <button class="button primary wide" type="submit">Simpan barang</button>
+      </form>
+    </section>
+  </div>
+
+  <div id="order-modal" class="modal-backdrop hidden"><section class="modal order-modal" role="dialog" aria-modal="true"><button class="icon-button modal-close" data-close-modal="order-modal" aria-label="Tutup">×</button><span class="kicker">Detail pesanan</span><h2 id="order-modal-title">—</h2><div id="order-detail"></div></section></div>
+</body>
+</html>

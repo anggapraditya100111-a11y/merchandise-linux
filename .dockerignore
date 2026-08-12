@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+.git
+.github
+.env
+data
+uploads
+backups
+restore-tmp
+tests
+*.merchbackup

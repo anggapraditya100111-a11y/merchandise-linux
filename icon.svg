@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AINET Merchandise">
+  <rect width="512" height="512" rx="112" fill="#0a3f8d"/>
+  <path d="M128 180h256l-24 208H152z" fill="#fff"/>
+  <path d="M196 196v-28c0-39 25-68 60-68s60 29 60 68v28" fill="none" stroke="#f79b35" stroke-width="28" stroke-linecap="round"/>
+  <text x="256" y="322" text-anchor="middle" fill="#0a3f8d" font-family="Arial,sans-serif" font-size="104" font-weight="800">AI</text>
+</svg>

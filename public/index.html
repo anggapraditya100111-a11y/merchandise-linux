@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a3f8d">
+  <title>AINET Merchandise</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="AINET Merchandise">
+        <span class="brand-mark">AI</span>
+        <span><strong>AINET</strong><small>MERCHANDISE</small></span>
+      </a>
+      <div class="header-actions">
+        <a href="#keranjang" class="cart-shortcut">Keranjang <b id="cart-badge">0</b></a>
+        <a href="/admin" class="admin-link">Admin</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <span class="eyebrow">Katalog internal AINET</span>
+        <h1>Merchandise untuk seluruh tim PoP.</h1>
+        <p>Pilih barang beserta ukuran atau nomornya, masukkan ke keranjang, lalu kirim pesanan tanpa proses pembayaran.</p>
+      </div>
+      <ol class="steps" aria-label="Alur pemesanan">
+        <li><b>01</b><span>Pilih barang</span></li>
+        <li><b>02</b><span>Isi data</span></li>
+        <li><b>03</b><span>Konfirmasi admin</span></li>
+      </ol>
+    </section>
+
+    <div class="store-layout">
+      <section class="catalog-section" aria-labelledby="catalog-title">
+        <div class="section-heading">
+          <div><span class="kicker">Pilihan merchandise</span><h2 id="catalog-title">Katalog barang</h2></div>
+          <span id="product-count" class="muted">Memuat katalog…</span>
+        </div>
+        <div id="category-tabs" class="category-tabs" aria-label="Filter kategori"></div>
+        <p id="catalog-error" class="alert error hidden" role="alert"></p>
+        <div id="product-grid" class="product-grid" aria-live="polite">
+          <div class="loading-card">Memuat barang…</div>
+        </div>
+      </section>
+
+      <aside class="order-panel" id="keranjang">
+        <div class="order-heading">
+          <div><span class="kicker">Ringkasan</span><h2>Keranjang pesanan</h2></div>
+          <span id="cart-count">0 barang</span>
+        </div>
+        <div id="cart-list" class="cart-list"></div>
+        <div id="empty-cart" class="empty-cart"><span>🛍️</span><strong>Keranjang masih kosong</strong><small>Pilih barang dari katalog di samping.</small></div>
+        <div class="order-total"><span>Total nominal</span><strong id="cart-total">Rp0</strong></div>
+        <form id="order-form" class="customer-form">
+          <h3>Data pemesan</h3>
+          <label><span>Nama pemesan</span><input name="customerName" minlength="2" maxlength="100" autocomplete="name" placeholder="Masukkan nama lengkap" required></label>
+          <label><span>Asal PoP</span><select name="popId" id="pop-select" required><option value="">Pilih PoP</option></select></label>
+          <label><span>Nomor WhatsApp</span><input name="whatsapp" type="tel" inputmode="tel" autocomplete="tel" placeholder="Contoh: 081234567890" required></label>
+          <p id="order-error" class="alert error hidden" role="alert"></p>
+          <button id="submit-order" class="button primary wide" type="submit" disabled>Kirim pesanan <span>→</span></button>
+          <p class="note">Tidak ada pembayaran di website. Pesanan hanya dicatat dan diteruskan kepada admin kantor pusat.</p>
+        </form>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="footer"><strong>AINET Merchandise</strong><span>Internal order catalog · PT Axindo Infinitas Network</span></footer>
+
+  <div id="success-backdrop" class="modal-backdrop hidden">
+    <section class="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="success-title">
+      <button id="close-success" class="icon-button modal-close" type="button" aria-label="Tutup">×</button>
+      <div class="success-icon">✓</div>
+      <span class="kicker">Pesanan berhasil dicatat</span>
+      <h2 id="success-title">Selanjutnya Anda dapat melakukan konfirmasi ke admin untuk pemesanan.</h2>
+      <div class="order-number"><span>Nomor order Anda adalah</span><strong id="success-number">—</strong></div>
+      <div id="success-customer" class="receipt-head"></div>
+      <div id="success-items" class="receipt-items"></div>
+      <div class="modal-actions">
+        <button id="finish-order" class="button secondary" type="button">Selesai</button>
+        <a id="download-pdf" class="button primary" href="#" download>↓ Download PDF order</a>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

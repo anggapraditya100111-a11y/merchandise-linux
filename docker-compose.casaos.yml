@@ -1,0 +1,76 @@
+name: ainet-merchandise
+
+services:
+  ainet-merchandise:
+    image: ghcr.io/anggapraditya100111-a11y/ainet-merchandise:latest
+    container_name: ainet-merchandise
+    restart: unless-stopped
+    ports:
+      - "8092:8092"
+    environment:
+      NODE_ENV: production
+      PORT: 8092
+      TZ: Asia/Jakarta
+      APP_SECRET: ""
+      INITIAL_ADMIN_USERNAME: admin
+      INITIAL_ADMIN_PASSWORD: ""
+      APP_NAME: AINET Merchandise
+      COMPANY_NAME: PT Axindo Infinitas Network
+      TRUST_PROXY: "false"
+      COOKIE_SECURE: "false"
+      DATA_DIR: /app/data
+      UPLOAD_DIR: /app/uploads
+      BACKUP_DIR: /app/backups
+      RESTORE_TMP_DIR: /app/restore-tmp
+    volumes:
+      - /DATA/AppData/ainet-merchandise/database:/app/data
+      - /DATA/AppData/ainet-merchandise/uploads:/app/uploads
+      - /DATA/AppData/ainet-merchandise/backups:/app/backups
+      - /DATA/AppData/ainet-merchandise/restore-tmp:/app/restore-tmp
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8092/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    x-casaos:
+      envs:
+        - container: TZ
+          description:
+            en_us: Time zone
+            id_id: Zona waktu
+      ports:
+        - container: "8092"
+          description:
+            en_us: Web interface
+            id_id: Antarmuka web
+      volumes:
+        - container: /app/data
+          description:
+            en_us: SQLite database
+            id_id: Database SQLite
+        - container: /app/uploads
+          description:
+            en_us: Product images
+            id_id: Gambar produk
+        - container: /app/backups
+          description:
+            en_us: Application backups
+            id_id: Backup aplikasi
+
+x-casaos:
+  architectures: [amd64, arm64]
+  main: ainet-merchandise
+  author: AINET
+  category: Utilities
+  developer: PT Axindo Infinitas Network
+  description:
+    en_us: Internal merchandise catalogue and order recording without online payment.
+    id_id: Katalog dan pencatatan pesanan merchandise internal tanpa pembayaran online.
+  icon: https://raw.githubusercontent.com/anggapraditya100111-a11y/merchandise-linux/main/icon.svg
+  index: /
+  port_map: "8092"
+  scheme: http
+  title:
+    en_us: AINET Merchandise
+    id_id: AINET Merchandise
