@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 — 2026-08-12
+
+- Instalasi tidak lagi memakai `git clone` ke `github.com`, sehingga tetap berjalan ketika koneksi port 443 ke domain tersebut timeout.
+- Installer dan updater mengunduh paket terverifikasi melalui `raw.githubusercontent.com`.
+- Setiap paket diperiksa menggunakan SHA-256 sebelum diekstrak atau dijalankan.
+- Update tidak memerlukan Git, username, token, maupun deploy key.
+- Update tetap membuat backup lengkap, membangun image sebelum menukar source, melakukan health check, serta memulihkan source dan image lama ketika gagal.
+
 ## 1.0.0 — 2026-08-12
 
 - Katalog publik tanpa login dan tanpa pembayaran.

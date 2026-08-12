@@ -13,3 +13,6 @@ restore-tmp/
 *.merchbackup
 npm-debug.log*
 .DS_Store
+.package-sha256
+ainet-merchandise-latest.tar.gz
+ainet-merchandise-latest.tar.gz.sha256

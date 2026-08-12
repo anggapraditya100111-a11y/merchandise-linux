@@ -35,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/anggapraditya100111-a11y/merchandis
 
 Installer akan:
 
-1. mengunduh source dari repository GitHub publik tanpa meminta username;
+1. mengunduh paket melalui `raw.githubusercontent.com` tanpa `git clone` dan tanpa meminta username;
 2. menyimpan source di `/DATA/AppData/ainet-merchandise/app`;
 3. membuat secret aplikasi dan password admin acak;
 4. membuat folder data persisten dengan hak akses yang sesuai;
@@ -68,15 +68,15 @@ sudo /DATA/AppData/ainet-merchandise/app/update.sh
 
 Updater melakukan langkah berikut:
 
-1. menolak update bila source lokal berubah;
+1. memeriksa checksum paket terbaru;
 2. membuat backup lengkap sebelum update;
-3. mengambil update GitHub tanpa prompt username/password interaktif;
-4. hanya menerima update fast-forward;
-5. membangun dan menjalankan image baru;
-6. menunggu health check;
-7. mengaktifkan kembali image lama jika versi baru tidak sehat.
+3. mengunduh paket melalui `raw.githubusercontent.com` tanpa Git, username, atau token;
+4. memverifikasi SHA-256 sebelum mengekstrak paket;
+5. membangun image baru sebelum menukar source aktif;
+6. menjalankan image baru dan menunggu health check;
+7. mengaktifkan kembali source dan image lama jika versi baru tidak sehat.
 
-Repository publik menggunakan URL HTTPS sehingga `git fetch` dan `git pull` tidak meminta username GitHub. Untuk source privat, gunakan SSH deploy key read-only; jangan menaruh token di URL remote.
+Jalur instalasi dan update tidak mengakses `github.com`. Hal ini menghindari timeout port 443 yang dapat terjadi pada sebagian jaringan, selama `raw.githubusercontent.com` tetap dapat dijangkau.
 
 ## Backup dan restore
 

@@ -9,3 +9,6 @@ backups
 restore-tmp
 tests
 *.merchbackup
+.package-sha256
+ainet-merchandise-latest.tar.gz
+ainet-merchandise-latest.tar.gz.sha256
