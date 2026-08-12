@@ -54,6 +54,19 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   const base = `http://127.0.0.1:${port}`;
   await waitFor(`${base}/api/health`, child);
 
+  const pageResponse = await fetch(`${base}/`);
+  assert.equal(pageResponse.status, 200);
+  assert.match(pageResponse.headers.get("content-type"), /text\/html/);
+  assert.doesNotMatch(pageResponse.headers.get("content-security-policy") || "", /upgrade-insecure-requests/);
+
+  const styleResponse = await fetch(`${base}/styles.css`);
+  assert.equal(styleResponse.status, 200);
+  assert.match(styleResponse.headers.get("content-type"), /text\/css/);
+
+  const scriptResponse = await fetch(`${base}/app.js`);
+  assert.equal(scriptResponse.status, 200);
+  assert.match(scriptResponse.headers.get("content-type"), /javascript/);
+
   const catalogResponse = await fetch(`${base}/api/catalog`);
   assert.equal(catalogResponse.status, 200);
   const catalog = await catalogResponse.json();

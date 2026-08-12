@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 — 2026-08-12
+
+- Tampilan katalog dan panel admin kembali termuat saat CasaOS diakses melalui HTTP/IP lokal.
+- Content Security Policy tidak lagi memaksa aset CSS dan JavaScript internal menggunakan HTTPS ketika layanan hanya menyediakan HTTP.
+- Ditambahkan pengujian otomatis untuk memastikan HTML, CSS, dan JavaScript publik dapat dimuat dan aturan tersebut tidak muncul kembali.
+
 ## 1.0.1 — 2026-08-12
 
 - Instalasi tidak lagi memakai `git clone` ke `github.com`, sehingga tetap berjalan ketika koneksi port 443 ke domain tersebut timeout.

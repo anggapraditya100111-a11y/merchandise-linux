@@ -34,6 +34,10 @@ app.use(helmet({
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'self'"],
+      // CasaOS commonly exposes apps over plain HTTP on a local IP address.
+      // Helmet enables this directive by default, which makes browsers rewrite
+      // /styles.css and /app.js to HTTPS even when no HTTPS listener exists.
+      upgradeInsecureRequests: null,
     },
   },
   crossOriginResourcePolicy: { policy: "same-origin" },
