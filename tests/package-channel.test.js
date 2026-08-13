@@ -7,6 +7,9 @@ const root = path.join(__dirname, "..");
 const installer = fs.readFileSync(path.join(root, "install-casaos.sh"), "utf8");
 const updater = fs.readFileSync(path.join(root, "update.sh"), "utf8");
 const catalogScript = fs.readFileSync(path.join(root, "public", "app.js"), "utf8");
+const adminScript = fs.readFileSync(path.join(root, "public", "admin.js"), "utf8");
+const adminHtml = fs.readFileSync(path.join(root, "public", "admin.html"), "utf8");
+const compose = fs.readFileSync(path.join(root, "docker-compose.yml"), "utf8");
 
 test("installer dan updater memakai jalur paket raw GitHub", () => {
   for (const script of [installer, updater]) {
@@ -22,10 +25,24 @@ test("updater mempertahankan backup, health check, dan rollback", () => {
   assert.match(updater, /api\/health/);
   assert.match(updater, /source-rollback/);
   assert.match(updater, /old_image_id/);
+  assert.match(updater, /TRUST_PROXY=false/);
+  assert.match(updater, /TRUST_PROXY=true/);
 });
 
 test("form order menyimpan referensi sebelum request asynchronous", () => {
   assert.match(catalogScript, /const formElement = event\.currentTarget;/);
   assert.match(catalogScript, /formElement\.reset\(\);/);
   assert.doesNotMatch(catalogScript, /event\.currentTarget\.reset\(\);/);
+});
+
+test("form password menyimpan referensi dan menyediakan kontrol tampilkan password", () => {
+  assert.match(adminScript, /const formElement = event\.currentTarget;/);
+  assert.match(adminScript, /formElement\.reset\(\);/);
+  assert.doesNotMatch(adminScript, /event\.currentTarget\.reset\(\);/);
+  assert.match(adminHtml, /data-toggle-password/);
+  assert.match(adminHtml, /minlength="8"/);
+});
+
+test("konfigurasi CasaOS mempercayai reverse proxy secara default", () => {
+  assert.match(compose, /TRUST_PROXY: "\$\{TRUST_PROXY:-true\}"/);
 });

@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ainet-merchandise:1.1.1
+    image: ainet-merchandise:1.2.0
     container_name: ainet-merchandise
     restart: unless-stopped
     ports:
@@ -19,7 +19,7 @@ services:
       INITIAL_ADMIN_PASSWORD: "${INITIAL_ADMIN_PASSWORD}"
       APP_NAME: "${APP_NAME:-AINET Merchandise}"
       COMPANY_NAME: "${COMPANY_NAME:-PT Axindo Infinitas Network}"
-      TRUST_PROXY: "${TRUST_PROXY:-false}"
+      TRUST_PROXY: "${TRUST_PROXY:-true}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       DATA_DIR: /app/data
       UPLOAD_DIR: /app/uploads

@@ -16,7 +16,7 @@ services:
       INITIAL_ADMIN_PASSWORD: ""
       APP_NAME: AINET Merchandise
       COMPANY_NAME: PT Axindo Infinitas Network
-      TRUST_PROXY: "false"
+      TRUST_PROXY: "true"
       COOKIE_SECURE: "false"
       DATA_DIR: /app/data
       UPLOAD_DIR: /app/uploads

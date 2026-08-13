@@ -106,6 +106,12 @@ chmod 600 "$app_directory/.package-sha256"
 chmod +x "$app_directory/install.sh" "$app_directory/update.sh" "$app_directory/install-casaos.sh"
 
 cd "$app_directory"
+if grep -qx 'TRUST_PROXY=false' .env; then
+  sed -i 's/^TRUST_PROXY=false$/TRUST_PROXY=true/' .env
+  echo "Konfigurasi reverse proxy CasaOS diaktifkan untuk mencegah kegagalan login admin."
+elif ! grep -q '^TRUST_PROXY=' .env; then
+  printf '\nTRUST_PROXY=true\n' >> .env
+fi
 start_failed=false
 if ! docker compose --env-file .env up -d --force-recreate; then
   start_failed=true

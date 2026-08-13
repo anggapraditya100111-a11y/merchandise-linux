@@ -8,11 +8,14 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 - Keranjang belanja tanpa sistem pembayaran.
 - Nama pemesan, asal PoP, nomor WhatsApp, dan catatan opsional maksimal 500 karakter.
 - Pilihan ukuran baju, nomor sepatu, atau varian lain langsung pada setiap barang.
-- Popup setelah order berhasil dengan pesan konfirmasi dan nomor order otomatis.
+- Popup setelah order berhasil dengan pesan konfirmasi, nomor order otomatis, tombol PDF, dan tombol WhatsApp admin.
 - Download PDF order lengkap dengan gambar barang, ukuran/nomor, jumlah, harga, dan total nominal.
-- Panel admin untuk pesanan, barang, galeri maksimal 5 foto, varian, kategori, dan daftar PoP.
-- Pengaturan nama aplikasi, nama perusahaan, logo, serta warna tampilan.
-- Slider gambar untuk setiap produk di katalog.
+- Panel admin untuk pesanan (termasuk hapus), barang, galeri maksimal 5 foto, varian, kategori, dan daftar PoP.
+- Foto barang ditambahkan satu per satu sebagai thumbnail dan dapat disusun ulang dengan drag-and-drop.
+- Pengaturan nama aplikasi, teks header katalog, nama perusahaan, logo, warna, WhatsApp admin pusat, serta domain publik.
+- Slider gambar dan popup galeri besar dengan navigasi foto untuk setiap produk di katalog.
+- Setelah order berhasil, browser membuka WhatsApp admin dengan ringkasan dan tautan PDF publik yang sudah terisi.
+- Ubah password admin dengan tombol mata; password baru minimal 8 karakter dan hanya menggunakan huruf serta angka.
 - Rekap order CSV; tidak ada status pesanan.
 - Backup/restore lengkap untuk database SQLite dan seluruh gambar.
 - Mendukung `amd64` dan `arm64` melalui Docker.
@@ -94,9 +97,16 @@ Restore memvalidasi format ZIP, mencegah path traversal, memeriksa integritas SQ
 
 `.env`, database, gambar, backup, dan area restore tidak disimpan ke GitHub.
 
-## Reverse proxy dan HTTPS
+## Domain publik, WhatsApp, reverse proxy, dan HTTPS
 
-Jika aplikasi diakses melalui domain HTTPS, ubah `.env`:
+Masuk ke **Admin → Pengaturan → Identitas & tampilan**, lalu isi:
+
+- **WhatsApp admin pusat**, misalnya `081234567890`;
+- **Domain publik katalog**, misalnya `https://katalog.axindo.my.id`.
+
+Browser biasa tidak diizinkan melampirkan file PDF langsung ke WhatsApp tanpa WhatsApp Business API. Karena itu aplikasi mengisikan pesan WhatsApp beserta tautan PDF order publik secara otomatis. Admin dapat membuka atau mengunduh PDF dari tautan tersebut.
+
+`TRUST_PROXY=true` sudah menjadi konfigurasi bawaan untuk CasaOS dan updater akan memigrasikan nilai lama `false`. Jika aplikasi diakses melalui domain HTTPS, aktifkan cookie aman di `.env`:
 
 ```env
 TRUST_PROXY=true
@@ -129,15 +139,15 @@ docker compose config --quiet
 docker build -t ainet-merchandise:test .
 ```
 
-Test otomatis memeriksa katalog, kategori, galeri lima foto, pengaturan identitas/warna, catatan order, PDF, login admin, backup, restore, dan perlindungan path paket backup.
+Test otomatis memeriksa katalog, kategori, galeri lima foto dan urutannya, pengaturan identitas/domain/WhatsApp, catatan order, PDF, pengalihan WhatsApp, login reverse proxy, ubah password, hapus order, backup, restore, dan perlindungan path paket backup.
 
 ## Rilis image
 
 Push tag versi untuk membangun image multi-arsitektur melalui GitHub Actions:
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 Workflow menerbitkan `ghcr.io/anggapraditya100111-a11y/ainet-merchandise:latest`. Pastikan package GHCR diatur menjadi **Public** sebelum menggunakan `docker-compose.casaos.yml`.

@@ -146,7 +146,7 @@ function initDatabase() {
   if (!adminCount) {
     const username = String(process.env.INITIAL_ADMIN_USERNAME || "admin").trim();
     const configuredPassword = String(process.env.INITIAL_ADMIN_PASSWORD || "").trim();
-    const password = configuredPassword || `Admin-${crypto.randomBytes(8).toString("hex")}Aa1`;
+    const password = configuredPassword || `Admin${crypto.randomBytes(8).toString("hex")}Aa1`;
     db.prepare("INSERT INTO admins (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
       .run(id("adm"), username, bcrypt.hashSync(password, 12), timestamp, timestamp);
     if (!configuredPassword) {
@@ -207,6 +207,11 @@ function initDatabase() {
   setting.run("secondary_color", "#1554af");
   setting.run("accent_color", "#f79b35");
   setting.run("logo_filename", "");
+  setting.run("hero_eyebrow", "Katalog internal AINET");
+  setting.run("hero_title", "Merchandise untuk seluruh tim PoP.");
+  setting.run("hero_description", "Pilih barang beserta ukuran atau nomornya, masukkan ke keranjang, lalu kirim pesanan tanpa proses pembayaran.");
+  setting.run("admin_whatsapp", "");
+  setting.run("public_base_url", "https://katalog.axindo.my.id");
   return db;
 }
 
@@ -269,8 +274,9 @@ function saveProduct(input, productId = null) {
   const timestamp = nowIso();
   const variants = Array.from(new Set((input.variants || []).map((value) => String(value).trim()).filter(Boolean)));
   const variantLabel = variants.length ? String(input.variantLabel || "Ukuran").trim() : null;
-  const newImages = Array.from(new Set((input.imageFilenames || []).map(String).filter(Boolean)));
+  const newImages = (input.imageFilenames || []).map(String).filter(Boolean);
   if (newImages.length > 5) throw new Error("Gambar barang maksimal 5 foto.");
+  let removedFilenames = [];
   db.exec("BEGIN IMMEDIATE");
   try {
     let targetId = productId;
@@ -282,6 +288,7 @@ function saveProduct(input, productId = null) {
         return null;
       }
       const removed = new Set((input.removeImageIds || []).map(String));
+      removedFilenames = current.images.filter((image) => removed.has(image.id)).map((image) => image.filename);
       existingImages = current.images.filter((image) => !removed.has(image.id));
       if (existingImages.length + newImages.length > 5) throw new Error("Total gambar barang maksimal 5 foto.");
       db.prepare(`
@@ -300,11 +307,29 @@ function saveProduct(input, productId = null) {
         JSON.stringify(variants), timestamp, timestamp);
     }
 
-    const filenames = [...existingImages.map((image) => image.filename), ...newImages];
+    const existingByToken = new Map(existingImages.map((image) => [`existing:${image.id}`, image.filename]));
+    const newByToken = new Map(newImages.map((filename, index) => [`new:${index}`, filename]));
+    const fallbackFilenames = [...existingImages.map((image) => image.filename), ...newImages];
+    let filenames = fallbackFilenames;
+    if (input.imageOrder?.length) {
+      const order = input.imageOrder.map(String);
+      const expected = new Set([...existingByToken.keys(), ...newByToken.keys()]);
+      if (order.length !== expected.size || new Set(order).size !== order.length || order.some((token) => !expected.has(token))) {
+        throw new Error("Urutan gambar tidak valid.");
+      }
+      filenames = order.map((token) => existingByToken.get(token) || newByToken.get(token));
+    }
+    if (filenames.length > 5) throw new Error("Total gambar barang maksimal 5 foto.");
     const insertImage = db.prepare("INSERT INTO product_images (id, product_id, filename, position, created_at) VALUES (?, ?, ?, ?, ?)");
     filenames.forEach((filename, position) => insertImage.run(id("img"), targetId, filename, position, timestamp));
     db.prepare("UPDATE products SET image_filename = ? WHERE id = ?").run(filenames[0] || null, targetId);
     db.exec("COMMIT");
+    for (const filename of removedFilenames) {
+      const stillUsed = db.prepare("SELECT COUNT(*) AS total FROM product_images WHERE filename = ?").get(filename).total;
+      if (!stillUsed) {
+        try { fs.rmSync(path.join(UPLOAD_DIR, path.basename(filename)), { force: true }); } catch {}
+      }
+    }
     return getProduct(targetId);
   } catch (error) {
     db.exec("ROLLBACK");
@@ -388,6 +413,11 @@ function getSettings() {
     primaryColor: values.primary_color || "#0a3f8d",
     secondaryColor: values.secondary_color || "#1554af",
     accentColor: values.accent_color || "#f79b35",
+    heroEyebrow: values.hero_eyebrow || "Katalog internal AINET",
+    heroTitle: values.hero_title || "Merchandise untuk seluruh tim PoP.",
+    heroDescription: values.hero_description || "Pilih barang beserta ukuran atau nomornya, masukkan ke keranjang, lalu kirim pesanan tanpa proses pembayaran.",
+    adminWhatsapp: values.admin_whatsapp || "",
+    publicBaseUrl: values.public_base_url || "https://katalog.axindo.my.id",
     logoFilename: values.logo_filename || null,
     logoUrl: values.logo_filename ? `/uploads/${encodeURIComponent(values.logo_filename)}` : null,
   };
@@ -402,6 +432,11 @@ function updateSettings(input) {
     primary_color: input.primaryColor ?? current.primaryColor,
     secondary_color: input.secondaryColor ?? current.secondaryColor,
     accent_color: input.accentColor ?? current.accentColor,
+    hero_eyebrow: input.heroEyebrow ?? current.heroEyebrow,
+    hero_title: input.heroTitle ?? current.heroTitle,
+    hero_description: input.heroDescription ?? current.heroDescription,
+    admin_whatsapp: input.adminWhatsapp ?? current.adminWhatsapp,
+    public_base_url: input.publicBaseUrl ?? current.publicBaseUrl,
     logo_filename: input.logoFilename === undefined ? (current.logoFilename || "") : (input.logoFilename || ""),
   };
   const statement = db.prepare(`
@@ -516,6 +551,10 @@ function listOrders() {
   return getDatabase().prepare("SELECT * FROM orders ORDER BY created_at DESC").all().map((row) => orderRow(row));
 }
 
+function deleteOrder(orderNumber) {
+  return getDatabase().prepare("DELETE FROM orders WHERE order_number = ?").run(orderNumber).changes > 0;
+}
+
 function verifyPdfToken(orderNumber, token) {
   const row = getDatabase().prepare("SELECT pdf_token FROM orders WHERE order_number = ?").get(orderNumber);
   if (!row || !token) return false;
@@ -564,6 +603,7 @@ module.exports = {
   createOrder,
   getOrderByNumber,
   listOrders,
+  deleteOrder,
   verifyPdfToken,
   findAdmin,
   updateAdminPassword,

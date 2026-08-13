@@ -1,5 +1,6 @@
 (() => {
-  const state = { products: [], pops: [], cart: [], category: "Semua", variants: {}, slides: {}, settings: null };
+  const state = { products: [], pops: [], cart: [], category: "Semua", variants: {}, slides: {}, settings: null, lightboxProduct: null, lightboxIndex: 0 };
+  let lightboxTouchStart = null;
   const rupiah = (value) => `Rp${new Intl.NumberFormat("id-ID").format(value)}`;
   const el = (id) => document.getElementById(id);
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
@@ -21,7 +22,7 @@
     const current = Math.min(state.slides[product.id] || 0, images.length - 1);
     state.slides[product.id] = current;
     return `<div class="product-gallery" data-gallery="${escapeHtml(product.id)}">
-      <div class="product-slides">${images.map((image, index) => `<img class="${index === current ? "active" : ""}" src="${escapeHtml(image.url)}" alt="${escapeHtml(product.name)} — foto ${index + 1}" loading="lazy">`).join("")}</div>
+      <div class="product-slides" data-open-gallery="${escapeHtml(product.id)}" title="Klik untuk memperbesar foto">${images.map((image, index) => `<img class="${index === current ? "active" : ""}" src="${escapeHtml(image.url)}" alt="${escapeHtml(product.name)} — foto ${index + 1}" loading="lazy">`).join("")}</div>
       ${images.length > 1 ? `<button class="gallery-arrow previous" type="button" data-slide="-1" data-product="${escapeHtml(product.id)}" aria-label="Foto sebelumnya">‹</button><button class="gallery-arrow next" type="button" data-slide="1" data-product="${escapeHtml(product.id)}" aria-label="Foto berikutnya">›</button><div class="gallery-dots">${images.map((_, index) => `<button type="button" class="${index === current ? "active" : ""}" data-slide-index="${index}" data-product="${escapeHtml(product.id)}" aria-label="Lihat foto ${index + 1}"></button>`).join("")}</div>` : ""}
     </div>`;
   }
@@ -31,6 +32,11 @@
     document.title = settings.appName;
     document.querySelectorAll("[data-app-name]").forEach((target) => { target.textContent = settings.appName; });
     el("footer-company").textContent = `Internal order catalog · ${settings.companyName}`;
+    el("hero-eyebrow").textContent = settings.heroEyebrow;
+    el("hero-title").textContent = settings.heroTitle;
+    el("hero-description").textContent = settings.heroDescription;
+    const paymentNote = el("payment-note");
+    paymentNote.innerHTML = `Tidak ada pembayaran di website. Pesanan hanya dicatat dan diteruskan kepada admin kantor pusat.${settings.adminWhatsapp ? ` Konfirmasi melalui <a href="https://wa.me/${escapeHtml(settings.adminWhatsapp)}" target="_blank" rel="noopener">WhatsApp admin +${escapeHtml(settings.adminWhatsapp)}</a>.` : ""}`;
     const initials = settings.appName.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase() || "AI";
     document.querySelectorAll("[data-brand-mark]").forEach((target) => {
       target.classList.toggle("has-logo", Boolean(settings.logoUrl));
@@ -76,6 +82,41 @@
     if (!gallery) return;
     gallery.querySelectorAll(".product-slides img").forEach((image, imageIndex) => image.classList.toggle("active", imageIndex === index));
     gallery.querySelectorAll(".gallery-dots button").forEach((dot, dotIndex) => dot.classList.toggle("active", dotIndex === index));
+  }
+
+  function renderLightbox() {
+    const product = state.lightboxProduct;
+    const images = imageList(product || {});
+    if (!product || !images.length) return;
+    state.lightboxIndex = ((state.lightboxIndex % images.length) + images.length) % images.length;
+    el("lightbox-image").src = images[state.lightboxIndex].url;
+    el("lightbox-image").alt = `${product.name} — foto ${state.lightboxIndex + 1}`;
+    el("lightbox-title").textContent = product.name;
+    el("lightbox-counter").textContent = `${state.lightboxIndex + 1} / ${images.length}`;
+    el("lightbox-previous").classList.toggle("hidden", images.length < 2);
+    el("lightbox-next").classList.toggle("hidden", images.length < 2);
+    el("lightbox-thumbnails").innerHTML = images.map((image, index) => `<button type="button" class="${index === state.lightboxIndex ? "active" : ""}" data-lightbox-index="${index}" aria-label="Lihat foto ${index + 1}"><img src="${escapeHtml(image.url)}" alt=""></button>`).join("");
+  }
+
+  function openLightbox(productId) {
+    const product = state.products.find((item) => item.id === productId);
+    if (!product || !imageList(product).length) return;
+    state.lightboxProduct = product;
+    state.lightboxIndex = state.slides[productId] || 0;
+    renderLightbox();
+    el("gallery-backdrop").classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+  }
+
+  function moveLightbox(change) {
+    state.lightboxIndex += change;
+    renderLightbox();
+  }
+
+  function closeLightbox() {
+    el("gallery-backdrop").classList.add("hidden");
+    state.lightboxProduct = null;
+    document.body.style.overflow = el("success-backdrop").classList.contains("hidden") ? "" : "hidden";
   }
 
   function totals() {
@@ -143,7 +184,10 @@
     el("success-number").textContent = order.orderNumber;
     el("success-customer").innerHTML = `<div><span>${escapeHtml(order.customerName)}</span><small>${escapeHtml(order.popName)} · ${escapeHtml(order.whatsapp)}</small>${order.note ? `<small class="receipt-note">Catatan: ${escapeHtml(order.note)}</small>` : ""}</div><strong>${rupiah(order.total)}</strong>`;
     el("success-items").innerHTML = order.items.map((item) => `<div class="receipt-item">${compactVisual({ name: item.productName, category: item.productName, imageUrl: item.imageUrl })}<div><strong>${escapeHtml(item.productName)}</strong><small>${item.variant ? `${escapeHtml(item.variantLabel || "Ukuran/nomor")}: ${escapeHtml(item.variant)}` : "Tanpa ukuran"} · ${item.quantity} pcs</small></div><span>${rupiah(item.subtotal)}</span></div>`).join("");
-    el("download-pdf").href = data.pdfUrl;
+    el("download-pdf").href = data.publicPdfUrl || data.pdfUrl;
+    const whatsappButton = el("confirm-whatsapp");
+    whatsappButton.classList.toggle("hidden", !data.whatsappUrl);
+    whatsappButton.href = data.whatsappUrl || "#";
     el("success-backdrop").classList.remove("hidden");
     document.body.style.overflow = "hidden";
   }
@@ -176,6 +220,7 @@
       formElement.reset();
       el("note-count").textContent = "0/500";
       showSuccess(data);
+      if (data.whatsappUrl) window.setTimeout(() => { window.location.href = data.whatsappUrl; }, 650);
     } catch (error) {
       showError("order-error", error.message || "Pesanan gagal disimpan.");
     } finally {
@@ -205,7 +250,9 @@
     const slideButton = event.target.closest("[data-slide]");
     if (slideButton) return setSlide(slideButton.dataset.product, (current) => current + Number(slideButton.dataset.slide));
     const addButton = event.target.closest("[data-add]");
-    if (addButton) addToCart(addButton.dataset.add);
+    if (addButton) return addToCart(addButton.dataset.add);
+    const gallery = event.target.closest("[data-open-gallery]");
+    if (gallery) openLightbox(gallery.dataset.openGallery);
   });
   el("cart-list").addEventListener("click", (event) => {
     const button = event.target.closest("[data-qty]");
@@ -216,7 +263,20 @@
   el("close-success").addEventListener("click", closeSuccess);
   el("finish-order").addEventListener("click", closeSuccess);
   el("success-backdrop").addEventListener("click", (event) => { if (event.target === el("success-backdrop")) closeSuccess(); });
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSuccess(); });
+  el("close-gallery").addEventListener("click", closeLightbox);
+  el("lightbox-previous").addEventListener("click", () => moveLightbox(-1));
+  el("lightbox-next").addEventListener("click", () => moveLightbox(1));
+  el("lightbox-thumbnails").addEventListener("click", (event) => { const button = event.target.closest("[data-lightbox-index]"); if (button) { state.lightboxIndex = Number(button.dataset.lightboxIndex); renderLightbox(); } });
+  el("gallery-backdrop").addEventListener("click", (event) => { if (event.target === el("gallery-backdrop")) closeLightbox(); });
+  el("lightbox-image").addEventListener("touchstart", (event) => { lightboxTouchStart = event.changedTouches[0]?.clientX ?? null; }, { passive: true });
+  el("lightbox-image").addEventListener("touchend", (event) => { const end = event.changedTouches[0]?.clientX; if (lightboxTouchStart !== null && end !== undefined && Math.abs(end - lightboxTouchStart) > 45) moveLightbox(end < lightboxTouchStart ? 1 : -1); lightboxTouchStart = null; }, { passive: true });
+  document.addEventListener("keydown", (event) => {
+    if (!el("gallery-backdrop").classList.contains("hidden")) {
+      if (event.key === "Escape") closeLightbox();
+      if (event.key === "ArrowLeft") moveLightbox(-1);
+      if (event.key === "ArrowRight") moveLightbox(1);
+    } else if (event.key === "Escape") closeSuccess();
+  });
   renderCart();
   loadCatalog();
 })();

@@ -1,5 +1,6 @@
 (() => {
-  const state = { admin: null, orders: [], products: [], pops: [], categories: [], settings: null, tab: "orders", editingProduct: null };
+  const state = { admin: null, orders: [], products: [], pops: [], categories: [], settings: null, tab: "orders", editingProduct: null, productImages: [] };
+  let draggedImageKey = null;
   const el = (id) => document.getElementById(id);
   const rupiah = (value) => `Rp${new Intl.NumberFormat("id-ID").format(value)}`;
   const dateTime = (value) => new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
@@ -41,7 +42,7 @@
       target.innerHTML = settings.logoUrl ? `<img src="${escapeHtml(settings.logoUrl)}" alt="Logo ${escapeHtml(settings.appName)}">` : escapeHtml(initials);
     });
     const form = el("settings-form");
-    for (const field of ["appName", "companyName", "primaryColor", "secondaryColor", "accentColor"]) form.elements[field].value = settings[field];
+    for (const field of ["appName", "companyName", "heroEyebrow", "heroTitle", "heroDescription", "adminWhatsapp", "publicBaseUrl", "primaryColor", "secondaryColor", "accentColor"]) form.elements[field].value = settings[field] || "";
     form.elements.removeLogo.checked = false;
     el("remove-logo-field").classList.toggle("hidden", !settings.logoUrl);
     el("logo-preview").classList.toggle("has-image", Boolean(settings.logoUrl));
@@ -89,7 +90,7 @@
       <td><b>${escapeHtml(order.orderNumber)}</b></td><td>${escapeHtml(dateTime(order.createdAt))}</td>
       <td><strong>${escapeHtml(order.customerName)}</strong><small>${escapeHtml(order.whatsapp)}</small></td><td>${escapeHtml(order.popName)}</td>
       <td>${order.items.map((item) => `<small>${escapeHtml(item.productName)}${item.variant ? ` · ${escapeHtml(item.variantLabel || "Ukuran")}: ${escapeHtml(item.variant)}` : ""} × ${item.quantity}</small>`).join("")}</td>
-      <td><b>${rupiah(order.total)}</b></td><td><button class="table-action" data-order="${order.orderNumber}">Detail</button></td>
+      <td><b>${rupiah(order.total)}</b></td><td><span class="table-actions"><button class="table-action" data-order="${order.orderNumber}">Detail</button><button class="table-action danger-text" data-delete-order="${order.orderNumber}">Hapus</button></span></td>
     </tr>`).join("") || `<tr><td colspan="7" class="empty-table">Belum ada pesanan.</td></tr>`;
   }
 
@@ -140,18 +141,31 @@
     el(`${section}-settings`).classList.remove("hidden");
   }
 
-  function updateImageLimit() {
-    const form = el("product-form");
-    const removed = form.querySelectorAll('[name="removeImageIds"]:checked').length;
-    const kept = (state.editingProduct?.images.length || 0) - removed;
-    const selected = form.elements.images.files.length;
-    const total = kept + selected;
-    el("image-limit-help").textContent = `${total}/5 foto akan disimpan.${total > 5 ? " Kurangi foto terlebih dahulu." : ""}`;
-    el("image-limit-help").classList.toggle("error-text", total > 5);
-    return total <= 5;
+  function clearStagedProductImages() {
+    for (const image of state.productImages) if (image.type === "new") URL.revokeObjectURL(image.url);
+    state.productImages = [];
+  }
+
+  function renderProductImages() {
+    el("product-image-list").innerHTML = state.productImages.map((image, index) => `<article class="product-image-thumb" draggable="true" data-image-key="${escapeHtml(image.key)}"><img src="${escapeHtml(image.url)}" alt="Foto ${index + 1}"><span>${index === 0 ? "Utama" : index + 1}</span><button type="button" data-remove-product-image="${escapeHtml(image.key)}" aria-label="Hapus foto">×</button><small>⋮⋮ Seret</small></article>`).join("") || `<div class="image-upload-empty">Belum ada foto.</div>`;
+    el("image-limit-help").textContent = `${state.productImages.length}/5 foto. Setelah upload, seret thumbnail untuk mengatur urutannya. Foto pertama menjadi foto utama.`;
+    el("image-limit-help").classList.toggle("error-text", state.productImages.length > 5);
+  }
+
+  function addProductImage() {
+    const picker = el("product-image-picker");
+    const file = picker.files[0];
+    if (!file) return message("Pilih file foto terlebih dahulu.", "error");
+    if (state.productImages.length >= 5) return message("Foto barang maksimal 5.", "error");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) return message("Foto harus berformat JPG, PNG, atau WebP.", "error");
+    if (file.size > 5 * 1024 * 1024) return message("Ukuran setiap foto maksimal 5 MB.", "error");
+    state.productImages.push({ key: `new-${Date.now()}-${Math.random()}`, type: "new", file, url: URL.createObjectURL(file) });
+    picker.value = "";
+    renderProductImages();
   }
 
   function openProduct(product = null) {
+    clearStagedProductImages();
     state.editingProduct = product;
     const form = el("product-form");
     form.reset();
@@ -163,10 +177,8 @@
       form.elements.variants.value = product.variants.join(", ");
       form.elements.active.checked = product.active;
     }
-    const images = product?.images || [];
-    el("existing-images-field").classList.toggle("hidden", !images.length);
-    el("existing-images").innerHTML = images.map((image, index) => `<label class="existing-image"><img src="${escapeHtml(image.url)}" alt="Foto ${index + 1}"><span><input type="checkbox" name="removeImageIds" value="${escapeHtml(image.id)}"> Hapus</span></label>`).join("");
-    updateImageLimit();
+    state.productImages = (product?.images || []).map((image) => ({ key: `existing-${image.id}`, type: "existing", id: image.id, url: image.url }));
+    renderProductImages();
     el("product-modal").classList.remove("hidden");
   }
 
@@ -176,7 +188,7 @@
     el("order-modal-title").textContent = order.orderNumber;
     el("order-detail").innerHTML = `<div class="order-info"><div><span>Nama pemesan</span><strong>${escapeHtml(order.customerName)}</strong></div><div><span>Asal PoP</span><strong>${escapeHtml(order.popName)}</strong></div><div><span>WhatsApp</span><strong>${escapeHtml(order.whatsapp)}</strong></div><div><span>Tanggal order</span><strong>${escapeHtml(dateTime(order.createdAt))}</strong></div>${order.note ? `<div class="order-note"><span>Catatan</span><strong>${escapeHtml(order.note)}</strong></div>` : ""}</div>
       <div>${order.items.map((item) => `<div class="order-item-detail">${visual(item, true)}<div><strong>${escapeHtml(item.productName)}</strong><small>${item.variant ? `${escapeHtml(item.variantLabel || "Ukuran")}: ${escapeHtml(item.variant)}` : "Tanpa ukuran"} · ${item.quantity} pcs × ${rupiah(item.unitPrice)}</small></div><b>${rupiah(item.subtotal)}</b></div>`).join("")}</div>
-      <div class="order-total-detail"><span>Total nominal</span><strong>${rupiah(order.total)}</strong></div><a class="button primary order-download" href="/api/orders/${encodeURIComponent(order.orderNumber)}/pdf">↓ Download PDF</a>`;
+      <div class="order-total-detail"><span>Total nominal</span><strong>${rupiah(order.total)}</strong></div><div class="modal-actions"><button class="button danger" type="button" data-delete-order="${escapeHtml(order.orderNumber)}">Hapus pesanan</button><a class="button primary order-download" href="/api/orders/${encodeURIComponent(order.orderNumber)}/pdf">↓ Download PDF</a></div>`;
     el("order-modal").classList.remove("hidden");
   }
 
@@ -220,7 +232,23 @@
   document.querySelector(".settings-subnav").addEventListener("click", (event) => { const button = event.target.closest("[data-settings-section]"); if (button) switchSettingsSection(button.dataset.settingsSection); });
   el("order-search").addEventListener("input", renderOrders);
   el("export-orders").addEventListener("click", exportCsv);
-  el("orders-body").addEventListener("click", (event) => { const button = event.target.closest("[data-order]"); if (button) showOrder(state.orders.find((order) => order.orderNumber === button.dataset.order)); });
+  async function removeOrder(orderNumber) {
+    const order = state.orders.find((item) => item.orderNumber === orderNumber);
+    if (!order || !confirm(`Hapus pesanan ${orderNumber} atas nama ${order.customerName}? Data yang dihapus tidak dapat dikembalikan kecuali melalui backup.`)) return;
+    try {
+      await api(`/api/admin/orders/${encodeURIComponent(orderNumber)}`, { method: "DELETE" });
+      closeModal("order-modal");
+      message(`Pesanan ${orderNumber} berhasil dihapus.`);
+      await loadAll();
+    } catch (error) { message(error.message, "error"); }
+  }
+  el("orders-body").addEventListener("click", (event) => {
+    const remove = event.target.closest("[data-delete-order]");
+    if (remove) return removeOrder(remove.dataset.deleteOrder);
+    const button = event.target.closest("[data-order]");
+    if (button) showOrder(state.orders.find((order) => order.orderNumber === button.dataset.order));
+  });
+  el("order-detail").addEventListener("click", (event) => { const button = event.target.closest("[data-delete-order]"); if (button) removeOrder(button.dataset.deleteOrder); });
   el("add-product").addEventListener("click", () => openProduct());
   el("admin-products").addEventListener("click", async (event) => {
     const edit = event.target.closest("[data-edit-product]");
@@ -235,17 +263,55 @@
     if (["kaos", "baju", "kemeja"].some((keyword) => category.includes(keyword))) { form.elements.variantLabel.value = "Ukuran"; if (!form.elements.variants.value) form.elements.variants.value = "S, M, L, XL, XXL"; }
     else if (category.includes("sepatu")) { form.elements.variantLabel.value = "Nomor sepatu"; if (!form.elements.variants.value) form.elements.variants.value = "38, 39, 40, 41, 42, 43, 44"; }
   });
-  el("product-form").elements.images.addEventListener("change", updateImageLimit);
-  el("existing-images").addEventListener("change", updateImageLimit);
+  el("add-product-image").addEventListener("click", addProductImage);
+  el("product-image-list").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-product-image]");
+    if (!button) return;
+    const index = state.productImages.findIndex((image) => image.key === button.dataset.removeProductImage);
+    if (index < 0) return;
+    const [removed] = state.productImages.splice(index, 1);
+    if (removed.type === "new") URL.revokeObjectURL(removed.url);
+    renderProductImages();
+  });
+  el("product-image-list").addEventListener("dragstart", (event) => {
+    const item = event.target.closest("[data-image-key]");
+    if (!item) return;
+    draggedImageKey = item.dataset.imageKey;
+    item.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+  });
+  el("product-image-list").addEventListener("dragover", (event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; });
+  el("product-image-list").addEventListener("drop", (event) => {
+    event.preventDefault();
+    const target = event.target.closest("[data-image-key]");
+    if (!target || !draggedImageKey || target.dataset.imageKey === draggedImageKey) return;
+    const from = state.productImages.findIndex((image) => image.key === draggedImageKey);
+    const to = state.productImages.findIndex((image) => image.key === target.dataset.imageKey);
+    if (from < 0 || to < 0) return;
+    const [moved] = state.productImages.splice(from, 1);
+    state.productImages.splice(to, 0, moved);
+    renderProductImages();
+  });
+  el("product-image-list").addEventListener("dragend", () => { draggedImageKey = null; renderProductImages(); });
   el("product-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!updateImageLimit()) return;
-    const form = new FormData(event.currentTarget);
-    form.set("removeImageIds", JSON.stringify(form.getAll("removeImageIds")));
-    if (state.editingProduct) form.set("active", String(event.currentTarget.elements.active.checked));
+    if (state.productImages.length > 5) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const keptIds = new Set(state.productImages.filter((image) => image.type === "existing").map((image) => image.id));
+    const removedIds = (state.editingProduct?.images || []).filter((image) => !keptIds.has(image.id)).map((image) => image.id);
+    const imageOrder = [];
+    let newIndex = 0;
+    for (const image of state.productImages) {
+      if (image.type === "existing") imageOrder.push(`existing:${image.id}`);
+      else { form.append("images", image.file, image.file.name); imageOrder.push(`new:${newIndex}`); newIndex += 1; }
+    }
+    form.set("removeImageIds", JSON.stringify(removedIds));
+    form.set("imageOrder", JSON.stringify(imageOrder));
+    if (state.editingProduct) form.set("active", String(formElement.elements.active.checked));
     try {
       await api(state.editingProduct ? `/api/admin/products/${state.editingProduct.id}` : "/api/admin/products", { method: state.editingProduct ? "PUT" : "POST", body: form });
-      closeModal("product-modal"); message(state.editingProduct ? "Barang berhasil diperbarui." : "Barang berhasil ditambahkan."); state.editingProduct = null; await loadAll();
+      closeModal("product-modal"); message(state.editingProduct ? "Barang berhasil diperbarui." : "Barang berhasil ditambahkan."); state.editingProduct = null; clearStagedProductImages(); await loadAll();
     } catch (error) { message(error.message, "error"); }
   });
   el("pop-form").addEventListener("submit", async (event) => {
@@ -278,8 +344,9 @@
   });
   el("settings-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    form.set("removeLogo", String(event.currentTarget.elements.removeLogo.checked));
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    form.set("removeLogo", String(formElement.elements.removeLogo.checked));
     try { const data = await api("/api/admin/settings", { method: "PUT", body: form }); applySettings(data.settings, true); message("Pengaturan aplikasi berhasil disimpan."); } catch (error) { message(error.message, "error"); }
   });
   el("create-backup").addEventListener("click", async () => {
@@ -288,12 +355,24 @@
   });
   el("restore-form").addEventListener("submit", async (event) => {
     event.preventDefault(); if (!confirm("Restore akan mengganti data saat ini. Backup rollback otomatis akan dibuat. Lanjutkan?")) return;
-    const form = new FormData(event.currentTarget); const button = event.currentTarget.querySelector("button"); button.disabled = true; button.textContent = "Memulihkan data…";
-    try { const data = await api("/api/admin/restore", { method: "POST", body: form }); message(data.message); event.currentTarget.reset(); await loadAll(); } catch (error) { message(error.message, "error"); } finally { button.disabled = false; button.textContent = "Restore data"; }
+    const formElement = event.currentTarget; const form = new FormData(formElement); const button = formElement.querySelector("button"); button.disabled = true; button.textContent = "Memulihkan data…";
+    try { const data = await api("/api/admin/restore", { method: "POST", body: form }); message(data.message); formElement.reset(); await loadAll(); } catch (error) { message(error.message, "error"); } finally { button.disabled = false; button.textContent = "Restore data"; }
   });
   el("password-form").addEventListener("submit", async (event) => {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
-    try { const data = await api("/api/admin/password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)) }); message(data.message); event.currentTarget.reset(); } catch (error) { message(error.message, "error"); }
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    if (form.get("newPassword") !== form.get("confirmPassword")) return message("Konfirmasi password baru tidak sama.", "error");
+    try { const data = await api("/api/admin/password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries(form)) }); message(data.message); formElement.reset(); } catch (error) { message(error.message, "error"); }
+  });
+  el("password-form").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-toggle-password]");
+    if (!button) return;
+    const input = button.parentElement.querySelector("input");
+    const showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    button.textContent = showing ? "👁" : "🙈";
+    button.setAttribute("aria-label", showing ? "Tampilkan password" : "Sembunyikan password");
   });
   document.addEventListener("click", (event) => { const button = event.target.closest("[data-close-modal]"); if (button) closeModal(button.dataset.closeModal); if (event.target.classList.contains("modal-backdrop")) event.target.classList.add("hidden"); });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape") document.querySelectorAll(".modal-backdrop").forEach((modal) => modal.classList.add("hidden")); });

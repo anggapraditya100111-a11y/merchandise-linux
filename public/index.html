@@ -26,9 +26,9 @@
   <main>
     <section class="hero">
       <div>
-        <span class="eyebrow">Katalog internal AINET</span>
-        <h1>Merchandise untuk seluruh tim PoP.</h1>
-        <p>Pilih barang beserta ukuran atau nomornya, masukkan ke keranjang, lalu kirim pesanan tanpa proses pembayaran.</p>
+        <span id="hero-eyebrow" class="eyebrow">Katalog internal AINET</span>
+        <h1 id="hero-title">Merchandise untuk seluruh tim PoP.</h1>
+        <p id="hero-description">Pilih barang beserta ukuran atau nomornya, masukkan ke keranjang, lalu kirim pesanan tanpa proses pembayaran.</p>
       </div>
       <ol class="steps" aria-label="Alur pemesanan">
         <li><b>01</b><span>Pilih barang</span></li>
@@ -66,7 +66,7 @@
           <label><span>Catatan <small id="note-count">0/500</small></span><textarea name="note" rows="4" maxlength="500" placeholder="Tambahkan catatan untuk admin jika diperlukan"></textarea></label>
           <p id="order-error" class="alert error hidden" role="alert"></p>
           <button id="submit-order" class="button primary wide" type="submit" disabled>Kirim pesanan <span>→</span></button>
-          <p class="note">Tidak ada pembayaran di website. Pesanan hanya dicatat dan diteruskan kepada admin kantor pusat.</p>
+          <p id="payment-note" class="note">Tidak ada pembayaran di website. Pesanan hanya dicatat dan diteruskan kepada admin kantor pusat.</p>
         </form>
       </aside>
     </div>
@@ -85,8 +85,19 @@
       <div id="success-items" class="receipt-items"></div>
       <div class="modal-actions">
         <button id="finish-order" class="button secondary" type="button">Selesai</button>
+        <a id="confirm-whatsapp" class="button whatsapp hidden" href="#" target="_self">Konfirmasi ke WhatsApp admin</a>
         <a id="download-pdf" class="button primary" href="#" download>↓ Download PDF order</a>
       </div>
+    </section>
+  </div>
+
+  <div id="gallery-backdrop" class="modal-backdrop gallery-backdrop hidden">
+    <section class="gallery-modal" role="dialog" aria-modal="true" aria-label="Galeri foto produk">
+      <button id="close-gallery" class="gallery-close" type="button" aria-label="Tutup galeri">×</button>
+      <button id="lightbox-previous" class="lightbox-arrow previous" type="button" aria-label="Foto sebelumnya">‹</button>
+      <figure><img id="lightbox-image" src="" alt=""><figcaption><strong id="lightbox-title"></strong><span id="lightbox-counter"></span></figcaption></figure>
+      <button id="lightbox-next" class="lightbox-arrow next" type="button" aria-label="Foto berikutnya">›</button>
+      <div id="lightbox-thumbnails" class="lightbox-thumbnails"></div>
     </section>
   </div>
 </body>

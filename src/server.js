@@ -22,7 +22,7 @@ for (const directory of [db.UPLOAD_DIR, db.BACKUP_DIR, RESTORE_TMP_DIR]) fs.mkdi
 db.initDatabase();
 
 const app = express();
-if (String(process.env.TRUST_PROXY || "false") === "true") app.set("trust proxy", 1);
+if (String(process.env.TRUST_PROXY || "true") === "true") app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(helmet({
   contentSecurityPolicy: {
@@ -91,6 +91,24 @@ function whatsapp(value) {
   return result.startsWith("+") ? `+${digits}` : digits;
 }
 
+function adminWhatsapp(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = `62${digits.slice(1)}`;
+  if (digits.length < 9 || digits.length > 15) throw new Error("Nomor WhatsApp admin harus berisi 9-15 digit.");
+  return digits;
+}
+
+function publicBaseUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let parsed;
+  try { parsed = new URL(raw); } catch { throw new Error("Domain publik harus berupa URL yang valid."); }
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Domain publik hanya boleh menggunakan http atau https.");
+  return parsed.toString().replace(/\/+$/, "");
+}
+
 function variants(value) {
   if (Array.isArray(value)) return value;
   return String(value || "").split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
@@ -131,13 +149,14 @@ function productInput(req) {
     variants: variants(req.body.variants),
     imageFilenames: (req.files || []).map((file) => file.filename),
     removeImageIds: stringList(req.body.removeImageIds),
+    imageOrder: stringList(req.body.imageOrder),
     active: String(req.body.active || "true") !== "false",
   };
 }
 
 function errorResponse(res, error, fallback = "Permintaan tidak dapat diproses.") {
   const message = error instanceof Error ? error.message : fallback;
-  const known = /harus|maksimal|tidak valid|tidak tersedia|sudah|kosong|dikenali|integritas|path|PoP|barang|kategori|gambar|warna|catatan|UNIQUE/i.test(message);
+  const known = /harus|maksimal|tidak valid|tidak tersedia|sudah|kosong|dikenali|integritas|path|PoP|barang|kategori|gambar|warna|catatan|domain|URL|password|pesanan|WhatsApp|urutan|UNIQUE/i.test(message);
   return res.status(known ? 400 : 500).json({ error: known ? message : fallback });
 }
 
@@ -163,10 +182,29 @@ app.post("/api/orders", orderLimiter, auth.rejectCrossSite, (req, res) => {
     const note = String(req.body.note || "").trim();
     if (note.length > 500) throw new Error("Catatan maksimal 500 karakter.");
     const order = db.createOrder({ customerName, popId, whatsapp: whatsapp(req.body.whatsapp), note, items });
+    const settings = db.getSettings();
+    const pdfUrl = `/api/orders/${encodeURIComponent(order.orderNumber)}/pdf?token=${encodeURIComponent(order.pdfToken)}`;
+    const requestBaseUrl = `${req.protocol}://${req.get("host")}`;
+    const publicPdfUrl = new URL(pdfUrl, `${settings.publicBaseUrl || requestBaseUrl}/`).toString();
+    const itemLines = order.items.map((item) => `- ${item.productName}${item.variant ? ` (${item.variantLabel || "Pilihan"}: ${item.variant})` : ""} x${item.quantity} = Rp${new Intl.NumberFormat("id-ID").format(item.subtotal)}`);
+    const whatsappMessage = [
+      `Konfirmasi pesanan merchandise ${order.orderNumber}`,
+      `Nama: ${order.customerName}`,
+      `PoP: ${order.popName}`,
+      `WA pemesan: ${order.whatsapp}`,
+      "",
+      ...itemLines,
+      "",
+      `Total: Rp${new Intl.NumberFormat("id-ID").format(order.total)}`,
+      order.note ? `Catatan: ${order.note}` : null,
+      `PDF order: ${publicPdfUrl}`,
+    ].filter((line) => line !== null).join("\n");
     res.status(201).json({
       order,
       message: "Selanjutnya Anda dapat melakukan konfirmasi ke admin untuk pemesanan.",
-      pdfUrl: `/api/orders/${encodeURIComponent(order.orderNumber)}/pdf?token=${encodeURIComponent(order.pdfToken)}`,
+      pdfUrl,
+      publicPdfUrl,
+      whatsappUrl: settings.adminWhatsapp ? `https://wa.me/${settings.adminWhatsapp}?text=${encodeURIComponent(whatsappMessage)}` : null,
     });
   } catch (error) {
     errorResponse(res, error, "Pesanan gagal disimpan.");
@@ -200,6 +238,10 @@ app.delete("/api/admin/session", auth.rejectCrossSite, (_req, res) => {
 });
 
 app.get("/api/admin/orders", auth.requireAdmin, (_req, res) => res.json({ orders: db.listOrders() }));
+app.delete("/api/admin/orders/:number", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  if (!db.deleteOrder(req.params.number)) return res.status(404).json({ error: "Pesanan tidak ditemukan." });
+  res.status(204).end();
+});
 app.get("/api/admin/products", auth.requireAdmin, (_req, res) => res.json({ products: db.listProducts() }));
 app.get("/api/admin/pops", auth.requireAdmin, (_req, res) => res.json({ pops: db.listPops() }));
 app.get("/api/admin/categories", auth.requireAdmin, (_req, res) => res.json({ categories: db.listCategories() }));
@@ -282,12 +324,18 @@ app.delete("/api/admin/categories/:id", auth.requireAdmin, auth.rejectCrossSite,
 
 app.put("/api/admin/settings", auth.requireAdmin, auth.rejectCrossSite, imageUpload.single("logo"), (req, res) => {
   try {
+    const currentSettings = db.getSettings();
     const input = {
       appName: text(req.body.appName, 2, 80, "Nama aplikasi"),
       companyName: text(req.body.companyName, 2, 120, "Nama perusahaan"),
       primaryColor: hexColor(req.body.primaryColor, "Warna utama"),
       secondaryColor: hexColor(req.body.secondaryColor, "Warna sekunder"),
       accentColor: hexColor(req.body.accentColor, "Warna aksen"),
+      heroEyebrow: text(req.body.heroEyebrow ?? currentSettings.heroEyebrow, 2, 80, "Label header katalog"),
+      heroTitle: text(req.body.heroTitle ?? currentSettings.heroTitle, 2, 140, "Judul header katalog"),
+      heroDescription: text(req.body.heroDescription ?? currentSettings.heroDescription, 2, 300, "Deskripsi header katalog"),
+      adminWhatsapp: adminWhatsapp(req.body.adminWhatsapp ?? currentSettings.adminWhatsapp),
+      publicBaseUrl: publicBaseUrl(req.body.publicBaseUrl ?? currentSettings.publicBaseUrl),
     };
     if (req.file) input.logoFilename = req.file.filename;
     else if (String(req.body.removeLogo || "false") === "true") input.logoFilename = null;
@@ -305,8 +353,8 @@ app.post("/api/admin/password", auth.requireAdmin, auth.rejectCrossSite, (req, r
       return res.status(400).json({ error: "Password saat ini salah." });
     }
     const newPassword = String(req.body.newPassword || "");
-    if (newPassword.length < 12 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
-      return res.status(400).json({ error: "Password baru minimal 12 karakter dan harus berisi huruf besar, huruf kecil, serta angka." });
+    if (newPassword.length < 8 || !/^[A-Za-z0-9]+$/.test(newPassword) || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      return res.status(400).json({ error: "Password baru minimal 8 karakter, hanya huruf dan angka, serta wajib mengandung keduanya." });
     }
     db.updateAdminPassword(current.id, bcrypt.hashSync(newPassword, 12));
     res.json({ message: "Password admin berhasil diubah." });

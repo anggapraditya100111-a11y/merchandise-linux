@@ -22,10 +22,10 @@ created_env=false
 if [ ! -f .env ]; then
   if command -v openssl >/dev/null 2>&1; then
     app_secret="$(openssl rand -hex 48)"
-    admin_password="Admin-$(openssl rand -hex 8)Aa1"
+    admin_password="Admin$(openssl rand -hex 8)Aa1"
   else
     app_secret="$(od -An -N48 -tx1 /dev/urandom | tr -d ' \n')"
-    admin_password="Admin-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')Aa1"
+    admin_password="Admin$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')Aa1"
   fi
   cp .env.example .env
   sed -i "s/GANTI_DENGAN_RANDOM_SECRET_MINIMAL_64_KARAKTER/$app_secret/" .env

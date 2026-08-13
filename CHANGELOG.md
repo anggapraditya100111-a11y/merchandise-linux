@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0 — 2026-08-13
+
+- Foto produk pada form tambah/edit kini diunggah satu per satu, langsung menjadi thumbnail, dan dapat disusun ulang dengan drag-and-drop hingga lima foto.
+- Gambar katalog dapat dibuka dalam popup galeri besar dengan tombol sebelumnya/berikutnya, thumbnail, keyboard, dan gestur geser pada layar sentuh.
+- Teks label, judul, dan deskripsi header katalog dapat diubah melalui Pengaturan.
+- Pengaturan baru untuk nomor WhatsApp admin pusat dan domain publik katalog.
+- Setelah pesanan berhasil, aplikasi membuka WhatsApp admin dengan ringkasan order dan tautan PDF publik; tombol WhatsApp tetap tersedia pada popup sukses.
+- Informasi tanpa pembayaran di formulir order kini menampilkan nomor WhatsApp admin.
+- Daftar dan detail pesanan memiliki tombol hapus dengan konfirmasi.
+- Ubah password dilengkapi tombol mata, konfirmasi password, aturan minimal 8 karakter, serta hanya huruf dan angka.
+- Memperbaiki error palsu setelah password berhasil diubah akibat referensi form asynchronous.
+- Reverse proxy dipercaya secara default pada CasaOS dan updater memigrasikan `TRUST_PROXY=false` untuk mencegah kegagalan login/rate-limit di balik domain publik.
+- Test integrasi ditambah untuk urutan foto, domain/WhatsApp, PDF publik, login reverse proxy, ubah password, dan hapus pesanan.
+
 ## 1.1.1 — 2026-08-12
 
 - Memperbaiki error `Cannot read properties of null (reading 'reset')` setelah order berhasil disimpan.

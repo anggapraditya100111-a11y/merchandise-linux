@@ -163,6 +163,8 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   assert.equal(orderData.order.total, shirt.price * 2);
   assert.equal(orderData.order.note, "Mohon dikirim bersama perlengkapan PoP.");
   assert.match(orderData.message, /konfirmasi ke admin/i);
+  assert.match(orderData.publicPdfUrl, /^https:\/\/katalog\.axindo\.my\.id\/api\/orders\//);
+  assert.equal(orderData.whatsappUrl, null);
 
   const pdfResponse = await fetch(`${base}${orderData.pdfUrl}`);
   assert.equal(pdfResponse.status, 200);
@@ -172,7 +174,7 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
 
   const loginResponse = await fetch(`${base}/api/admin/session`, {
     method: "POST",
-    headers: { "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    headers: { "content-type": "application/json", "sec-fetch-site": "same-origin", "x-forwarded-for": "203.0.113.10" },
     body: JSON.stringify({ username: "admin", password: "AdminPassword123" }),
   });
   assert.equal(loginResponse.status, 200, stderr);
@@ -209,6 +211,25 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   const createdProduct = (await productCreateResponse.json()).product;
   assert.equal(createdProduct.images.length, 5);
   assert.equal(createdProduct.imageUrl, createdProduct.images[0].url);
+
+  const originalImageUrls = createdProduct.images.map((image) => image.url);
+  const reorderForm = new FormData();
+  reorderForm.set("sku", createdProduct.sku);
+  reorderForm.set("name", createdProduct.name);
+  reorderForm.set("description", createdProduct.description);
+  reorderForm.set("category", createdProduct.category);
+  reorderForm.set("price", String(createdProduct.price));
+  reorderForm.set("variantLabel", createdProduct.variantLabel);
+  reorderForm.set("variants", createdProduct.variants.join(", "));
+  reorderForm.set("active", "true");
+  reorderForm.set("removeImageIds", "[]");
+  reorderForm.set("imageOrder", JSON.stringify(createdProduct.images.toReversed().map((image) => `existing:${image.id}`)));
+  const reorderResponse = await fetch(`${base}/api/admin/products/${createdProduct.id}`, {
+    method: "PUT", headers: { cookie, "sec-fetch-site": "same-origin" }, body: reorderForm,
+  });
+  assert.equal(reorderResponse.status, 200, await reorderResponse.clone().text());
+  const reorderedProduct = (await reorderResponse.json()).product;
+  assert.deepEqual(reorderedProduct.images.map((image) => image.url), originalImageUrls.toReversed());
 
   const renameUsedCategory = await fetch(`${base}/api/admin/categories/${createdCategory.id}`, {
     method: "PUT",
@@ -262,6 +283,11 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   settingsForm.set("primaryColor", "#123456");
   settingsForm.set("secondaryColor", "#234567");
   settingsForm.set("accentColor", "#abcdef");
+  settingsForm.set("heroEyebrow", "Katalog Tim Pengujian");
+  settingsForm.set("heroTitle", "Merchandise untuk seluruh penguji.");
+  settingsForm.set("heroDescription", "Pilih perlengkapan pengujian langsung dari katalog.");
+  settingsForm.set("adminWhatsapp", "081234567890");
+  settingsForm.set("publicBaseUrl", "https://katalog.axindo.my.id/");
   settingsForm.set("logo", new Blob([imageBytes], { type: "image/png" }), "logo.png");
   const settingsResponse = await fetch(`${base}/api/admin/settings`, {
     method: "PUT",
@@ -272,6 +298,9 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   const savedSettings = (await settingsResponse.json()).settings;
   assert.equal(savedSettings.appName, "Katalog Merchandise Tes");
   assert.equal(savedSettings.primaryColor, "#123456");
+  assert.equal(savedSettings.heroTitle, "Merchandise untuk seluruh penguji.");
+  assert.equal(savedSettings.adminWhatsapp, "6281234567890");
+  assert.equal(savedSettings.publicBaseUrl, "https://katalog.axindo.my.id");
   assert.ok(savedSettings.logoUrl);
   const themeResponse = await fetch(`${base}/theme.css`);
   assert.match(await themeResponse.text(), /--blue:#123456/);
@@ -280,9 +309,19 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   assert.equal(updatedCatalog.products.find((product) => product.id === createdProduct.id).images.length, 5);
   assert.equal(updatedCatalog.settings.appName, "Katalog Merchandise Tes");
 
+  const whatsappOrderResponse = await fetch(`${base}/api/orders`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ customerName: "Siti Aminah", popId: catalog.pops[0].id, whatsapp: "081298765432", items: [{ productId: shirt.id, variant: shirt.variants[0], quantity: 1 }] }),
+  });
+  assert.equal(whatsappOrderResponse.status, 201);
+  const whatsappOrder = await whatsappOrderResponse.json();
+  assert.match(whatsappOrder.whatsappUrl, /^https:\/\/wa\.me\/6281234567890\?text=/);
+  assert.match(decodeURIComponent(whatsappOrder.whatsappUrl), /PDF order: https:\/\/katalog\.axindo\.my\.id\/api\/orders\//);
+
   const adminOrdersResponse = await fetch(`${base}/api/admin/orders`, { headers: { cookie } });
   assert.equal(adminOrdersResponse.status, 200);
-  assert.equal((await adminOrdersResponse.json()).orders.length, 1);
+  assert.equal((await adminOrdersResponse.json()).orders.length, 2);
 
   const backupResponse = await fetch(`${base}/api/admin/backup`, { method: "POST", headers: { cookie, "sec-fetch-site": "same-origin" } });
   assert.equal(backupResponse.status, 200);
@@ -295,5 +334,34 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   assert.equal(restoreResponse.status, 200, await restoreResponse.text());
   const ordersAfterRestore = await fetch(`${base}/api/admin/orders`, { headers: { cookie } });
   assert.equal(ordersAfterRestore.status, 200);
-  assert.equal((await ordersAfterRestore.json()).orders.length, 1);
+  assert.equal((await ordersAfterRestore.json()).orders.length, 2);
+
+  const invalidPasswordResponse = await fetch(`${base}/api/admin/password`, {
+    method: "POST", headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ currentPassword: "AdminPassword123", newPassword: "Password!23" }),
+  });
+  assert.equal(invalidPasswordResponse.status, 400);
+  const passwordResponse = await fetch(`${base}/api/admin/password`, {
+    method: "POST", headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ currentPassword: "AdminPassword123", newPassword: "Admin2026" }),
+  });
+  assert.equal(passwordResponse.status, 200);
+  const oldLoginResponse = await fetch(`${base}/api/admin/session`, {
+    method: "POST", headers: { "content-type": "application/json", "sec-fetch-site": "same-origin", "x-forwarded-for": "203.0.113.11" },
+    body: JSON.stringify({ username: "admin", password: "AdminPassword123" }),
+  });
+  assert.equal(oldLoginResponse.status, 401);
+  const newLoginResponse = await fetch(`${base}/api/admin/session`, {
+    method: "POST", headers: { "content-type": "application/json", "sec-fetch-site": "same-origin", "x-forwarded-for": "203.0.113.12" },
+    body: JSON.stringify({ username: "admin", password: "Admin2026" }),
+  });
+  assert.equal(newLoginResponse.status, 200);
+
+  const deleteOrderResponse = await fetch(`${base}/api/admin/orders/${encodeURIComponent(whatsappOrder.order.orderNumber)}`, {
+    method: "DELETE", headers: { cookie, "sec-fetch-site": "same-origin" },
+  });
+  assert.equal(deleteOrderResponse.status, 204);
+  const finalOrders = await fetch(`${base}/api/admin/orders`, { headers: { cookie } }).then((response) => response.json());
+  assert.equal(finalOrders.orders.length, 1);
+  assert.doesNotMatch(stderr, /ERR_ERL_UNEXPECTED_X_FORWARDED_FOR/);
 });
