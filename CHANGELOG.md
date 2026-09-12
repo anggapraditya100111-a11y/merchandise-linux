@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2 — 2026-09-12
+
+- Pertahankan hubungan aman antara halaman admin Katalog dan popup AXINDO Access dengan `same-origin-allow-popups`.
+- Tutup popup secara mandiri setelah fallback handoff berhasil pada browser yang memutus `window.opener`.
+- Tegaskan bahwa sesi admin dari AXINDO ID tidak dapat mengubah password admin lokal, baik di tampilan maupun API.
+
 ## 1.3.1 — 2026-09-12
 
 - Tambahkan endpoint manifest kompatibel `/api/public/axindo-access.json` untuk jaringan yang memblokir jalur `/.well-known`.

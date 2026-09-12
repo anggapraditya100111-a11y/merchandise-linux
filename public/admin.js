@@ -113,6 +113,10 @@
     }
     await api("/api/auth/access/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, verifier }) });
     sessionStorage.removeItem(accessHandoffStorageKey(channel));
+    if (window.name === channel) {
+      window.close();
+      window.setTimeout(() => window.location.replace("/admin"), 250);
+    }
     return true;
   }
 

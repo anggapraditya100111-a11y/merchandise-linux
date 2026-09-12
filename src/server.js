@@ -29,6 +29,9 @@ const app = express();
 if (String(process.env.TRUST_PROXY || "true") === "true") app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(helmet({
+  // The admin page opens AXINDO Access on another subdomain. Keep the opener
+  // relationship so the one-time handoff code can return through postMessage.
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -472,7 +475,7 @@ app.put("/api/admin/settings", auth.requireAdmin, auth.rejectCrossSite, imageUpl
 app.post("/api/admin/password", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
   try {
     if (req.admin.authSource === "ACCESS") {
-      return res.status(400).json({ error: "Password AXINDO ID dikelola melalui menu Keamanan di AXINDO Access." });
+      return res.status(403).json({ error: "Password AXINDO ID dikelola melalui menu Keamanan di AXINDO Access." });
     }
     const current = db.findAdmin(req.admin.username);
     if (!current || !bcrypt.compareSync(String(req.body.currentPassword || ""), current.password_hash)) {

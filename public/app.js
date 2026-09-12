@@ -25,7 +25,15 @@
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Login AXINDO Access gagal.");
     sessionStorage.removeItem(storageKey);
-    window.location.replace("/admin");
+    // This is the fallback used when the browser severs window.opener. The
+    // session cookie is already shared with the catalogue tab, so close this
+    // script-opened window and let the opener's monitor finish the login.
+    if (window.name === channel) {
+      window.close();
+      window.setTimeout(() => window.location.replace("/admin"), 250);
+    } else {
+      window.location.replace("/admin");
+    }
     return true;
   }
 

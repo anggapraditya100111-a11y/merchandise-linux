@@ -15,7 +15,7 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 - Pengaturan nama aplikasi, teks header katalog, nama perusahaan, logo, warna, WhatsApp admin pusat, serta domain publik.
 - Slider gambar dan popup galeri besar dengan navigasi foto untuk setiap produk di katalog.
 - Setelah order berhasil, browser membuka WhatsApp admin dengan ringkasan dan tautan PDF publik yang sudah terisi.
-- Ubah password admin dengan tombol mata; password baru minimal 8 karakter dan hanya menggunakan huruf serta angka.
+- Ubah password admin lokal dengan tombol mata; akun yang masuk melalui AXINDO ID mengelola password di AXINDO Access.
 - Panel admin dapat masuk melalui AXINDO ID; login lokal tetap tersedia sebagai akses darurat.
 - Manifest role untuk Web Akses: Super Admin serta Pegawai/Pemesan.
 - Rekap order CSV; tidak ada status pesanan.
@@ -197,8 +197,8 @@ Test otomatis memeriksa katalog, kategori, galeri lima foto dan urutannya, penga
 Push tag versi untuk membangun image multi-arsitektur melalui GitHub Actions:
 
 ```bash
-git tag v1.3.1
-git push origin v1.3.1
+git tag v1.3.2
+git push origin v1.3.2
 ```
 
 Workflow menerbitkan `ghcr.io/anggapraditya100111-a11y/ainet-merchandise:latest`. Pastikan package GHCR diatur menjadi **Public** sebelum menggunakan `docker-compose.casaos.yml`.

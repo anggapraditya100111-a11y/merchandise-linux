@@ -415,6 +415,7 @@ test("manifest dan login admin terhubung ke AXINDO Access", { timeout: 20_000 },
 
   const manifestResponse = await fetch(`${base}/.well-known/axindo-access.json`);
   assert.equal(manifestResponse.status, 200);
+  assert.equal(manifestResponse.headers.get("cross-origin-opener-policy"), "same-origin-allow-popups");
   const manifest = await manifestResponse.json();
   assert.equal(manifest.id, "merchandise");
   assert.equal(manifest.url, "https://katalog.axindo.my.id");
@@ -447,7 +448,7 @@ test("manifest dan login admin terhubung ke AXINDO Access", { timeout: 20_000 },
     method: "POST", headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
     body: JSON.stringify({ currentPassword: "unused", newPassword: "Admin2026" }),
   });
-  assert.equal(password.status, 400);
+  assert.equal(password.status, 403);
   assert.match((await password.json()).error, /AXINDO ID/);
 
   const rejected = await fetch(`${base}/api/auth/access/complete`, {

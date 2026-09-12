@@ -59,5 +59,9 @@ test("deployment Ubuntu dan AXINDO Access tersedia", () => {
   assert.match(server, /AXINDO - MERCHANDISE - SUPER ADMIN/);
   assert.match(adminScript, /axindo-access-handoff/);
   assert.match(adminScript, /Date\.now\(\) - active\.closedAt < 1500/);
+  assert.match(adminScript, /local-password-card.*authSource === "ACCESS"/);
   assert.match(catalogScript, /merchandise-handoff:/);
+  assert.match(catalogScript, /window\.name === channel/);
+  assert.match(server, /same-origin-allow-popups/);
+  assert.match(server, /req\.admin\.authSource === "ACCESS"/);
 });
