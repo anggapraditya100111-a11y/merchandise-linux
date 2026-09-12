@@ -5,19 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102039">
   <title>Admin · AINET Merchandise</title>
-  <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/theme.css">
-  <script src="/admin.js" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=1.3.0">
+  <link rel="stylesheet" href="/theme.css?v=1.3.0">
+  <script src="/admin.js?v=1.3.0" defer></script>
 </head>
 <body class="admin-body">
   <main id="login-view" class="login-shell">
     <form id="login-form" class="login-card">
       <a class="brand" href="/"><span class="brand-mark" data-brand-mark>AI</span><span><strong data-app-name>AINET Merchandise</strong><small>MERCH ADMIN</small></span></a>
       <div><span class="kicker">Kantor pusat</span><h1>Masuk ke panel admin</h1><p>Kelola barang, PoP, dan catatan pesanan merchandise.</p></div>
-      <label><span>Username</span><input name="username" autocomplete="username" required></label>
-      <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+      <button id="access-login" class="button primary wide" type="button">Masuk dengan AXINDO ID</button>
+      <p id="access-login-status" class="login-status">Gunakan akun AXINDO ID yang memiliki role Super Admin Merchandise.</p>
       <p id="login-error" class="alert error hidden" role="alert"></p>
-      <button class="button primary wide" type="submit">Masuk</button>
+      <details id="local-login-toggle" class="local-login-toggle">
+        <summary>Login admin lokal (darurat)</summary>
+        <div class="local-login-fields">
+          <label><span>Username</span><input name="username" autocomplete="username" required></label>
+          <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+          <button class="button secondary wide" type="submit">Masuk dengan akun lokal</button>
+        </div>
+      </details>
       <a href="/" class="back-link">← Kembali ke katalog</a>
     </form>
   </main>
@@ -31,7 +38,7 @@
         <button data-tab="settings">⚙ <span>Pengaturan</span></button>
         <button data-tab="maintenance">⚙ <span>Pemeliharaan</span></button>
       </nav>
-      <div class="sidebar-user"><span id="admin-initial">A</span><div><strong id="admin-name">admin</strong><small>Administrator</small></div><button id="logout" aria-label="Keluar">↪</button></div>
+      <div class="sidebar-user"><span id="admin-initial">A</span><div><strong id="admin-name">admin</strong><small id="admin-auth-source">Administrator</small></div><button id="logout" aria-label="Keluar">↪</button></div>
     </aside>
 
     <section class="admin-content">
@@ -100,7 +107,7 @@
         <div class="maintenance-grid">
           <article class="maintenance-card"><span class="kicker">Perlindungan data</span><h2>Backup lengkap</h2><p>Unduh database, seluruh order, data barang, PoP, dan gambar produk dalam satu paket <code>.merchbackup</code>.</p><button id="create-backup" class="button primary">↓ Buat & download backup</button></article>
           <article class="maintenance-card warning"><span class="kicker">Pemulihan data</span><h2>Restore backup</h2><p>Restore akan memvalidasi paket, membuat rollback internal, lalu mengganti isi database dan gambar tanpa memindahkan folder volume Docker.</p><form id="restore-form"><label><span>File backup</span><input name="backup" type="file" accept=".merchbackup,.zip" required></label><button class="button danger" type="submit">Restore data</button></form></article>
-          <article class="maintenance-card"><span class="kicker">Keamanan admin</span><h2>Ubah password</h2><form id="password-form"><label><span>Password saat ini</span><span class="password-input"><input name="currentPassword" type="password" autocomplete="current-password" required><button type="button" data-toggle-password aria-label="Tampilkan password">👁</button></span></label><label><span>Password baru</span><span class="password-input"><input name="newPassword" type="password" autocomplete="new-password" minlength="8" pattern="[A-Za-z0-9]{8,}" required><button type="button" data-toggle-password aria-label="Tampilkan password">👁</button></span></label><label><span>Ulangi password baru</span><span class="password-input"><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" pattern="[A-Za-z0-9]{8,}" required><button type="button" data-toggle-password aria-label="Tampilkan password">👁</button></span></label><small>Minimal 8 karakter, hanya huruf dan angka, serta wajib mengandung keduanya.</small><button class="button secondary" type="submit">Simpan password</button></form></article>
+          <article id="local-password-card" class="maintenance-card"><span class="kicker">Keamanan admin lokal</span><h2>Ubah password</h2><form id="password-form"><label><span>Password saat ini</span><span class="password-input"><input name="currentPassword" type="password" autocomplete="current-password" required><button type="button" data-toggle-password aria-label="Tampilkan password">👁</button></span></label><label><span>Password baru</span><span class="password-input"><input name="newPassword" type="password" autocomplete="new-password" minlength="8" pattern="[A-Za-z0-9]{8,}" required><button type="button" data-toggle-password aria-label="Tampilkan password">👁</button></span></label><label><span>Ulangi password baru</span><span class="password-input"><input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" pattern="[A-Za-z0-9]{8,}" required><button type="button" data-toggle-password aria-label="Tampilkan password">👁</button></span></label><small>Minimal 8 karakter, hanya huruf dan angka, serta wajib mengandung keduanya.</small><button class="button secondary" type="submit">Simpan password</button></form></article>
         </div>
       </section>
     </section>

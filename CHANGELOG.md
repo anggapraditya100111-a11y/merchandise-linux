@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 — 2026-09-12
+
+- Tambahkan installer khusus Ubuntu Server dengan source di `/opt/axindo-merchandise` dan data persisten di `/var/lib/axindo-merchandise`.
+- Tambahkan manifest resmi `/.well-known/axindo-access.json` dengan role Super Admin dan Pegawai/Pemesan.
+- Panel admin kini dapat login melalui AXINDO ID memakai handoff AXINDO Access, PKCE, kode satu kali, dan pertukaran backend-ke-backend.
+- Tambahkan fallback Safari iPhone saat `window.opener` hilang serta perlindungan race condition ketika popup tertutup.
+- Pertahankan login admin lokal sebagai akses darurat; password AXINDO ID tetap dikelola di AXINDO Access.
+- Tambahkan koneksi internal Docker ke AXINDO Access melalui `host.docker.internal:8096` tanpa melewati Cloudflare Tunnel.
+- Pertahankan katalog publik tanpa login dan kompatibilitas backup/restore data CasaOS.
+
 ## 1.2.0 — 2026-08-13
 
 - Foto produk pada form tambah/edit kini diunggah satu per satu, langsung menjadi thumbnail, dan dapat disusun ulang dengan drag-and-drop hingga lima foto.

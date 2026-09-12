@@ -18,6 +18,11 @@ services:
       COMPANY_NAME: PT Axindo Infinitas Network
       TRUST_PROXY: "true"
       COOKIE_SECURE: "false"
+      PUBLIC_APP_URL: https://katalog.axindo.my.id
+      ACCESS_HANDOFF_ENABLED: "true"
+      ACCESS_PORTAL_URL: https://akses.axindo.my.id
+      ACCESS_PORTAL_INTERNAL_URL: http://host.docker.internal:8096
+      ACCESS_ADMIN_GROUP: AXINDO - MERCHANDISE - SUPER ADMIN
       DATA_DIR: /app/data
       UPLOAD_DIR: /app/uploads
       BACKUP_DIR: /app/backups
@@ -27,6 +32,8 @@ services:
       - /DATA/AppData/ainet-merchandise/uploads:/app/uploads
       - /DATA/AppData/ainet-merchandise/backups:/app/backups
       - /DATA/AppData/ainet-merchandise/restore-tmp:/app/restore-tmp
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8092/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s

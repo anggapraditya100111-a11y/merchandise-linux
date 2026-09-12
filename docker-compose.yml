@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ainet-merchandise:1.2.0
+    image: ainet-merchandise:1.3.0
     container_name: ainet-merchandise
     restart: unless-stopped
     ports:
@@ -21,15 +21,22 @@ services:
       COMPANY_NAME: "${COMPANY_NAME:-PT Axindo Infinitas Network}"
       TRUST_PROXY: "${TRUST_PROXY:-true}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      PUBLIC_APP_URL: "${PUBLIC_APP_URL:-https://katalog.axindo.my.id}"
+      ACCESS_HANDOFF_ENABLED: "${ACCESS_HANDOFF_ENABLED:-true}"
+      ACCESS_PORTAL_URL: "${ACCESS_PORTAL_URL:-https://akses.axindo.my.id}"
+      ACCESS_PORTAL_INTERNAL_URL: "${ACCESS_PORTAL_INTERNAL_URL:-http://host.docker.internal:8096}"
+      ACCESS_ADMIN_GROUP: "${ACCESS_ADMIN_GROUP:-AXINDO - MERCHANDISE - SUPER ADMIN}"
       DATA_DIR: /app/data
       UPLOAD_DIR: /app/uploads
       BACKUP_DIR: /app/backups
       RESTORE_TMP_DIR: /app/restore-tmp
     volumes:
-      - "${DATA_ROOT:-/DATA/AppData/ainet-merchandise}/database:/app/data"
-      - "${DATA_ROOT:-/DATA/AppData/ainet-merchandise}/uploads:/app/uploads"
-      - "${DATA_ROOT:-/DATA/AppData/ainet-merchandise}/backups:/app/backups"
-      - "${DATA_ROOT:-/DATA/AppData/ainet-merchandise}/restore-tmp:/app/restore-tmp"
+      - "${DATA_ROOT:-/var/lib/axindo-merchandise}/database:/app/data"
+      - "${DATA_ROOT:-/var/lib/axindo-merchandise}/uploads:/app/uploads"
+      - "${DATA_ROOT:-/var/lib/axindo-merchandise}/backups:/app/backups"
+      - "${DATA_ROOT:-/var/lib/axindo-merchandise}/restore-tmp:/app/restore-tmp"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8092/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s

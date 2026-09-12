@@ -23,6 +23,10 @@ function issueToken(admin) {
   const payload = Buffer.from(JSON.stringify({
     id: admin.id,
     username: admin.username,
+    name: admin.name || admin.username,
+    email: admin.email || "",
+    authSource: admin.authSource || "LOCAL",
+    role: "SUPER_ADMIN",
     exp: Date.now() + (12 * 60 * 60 * 1000),
   })).toString("base64url");
   return `${payload}.${sign(payload)}`;
@@ -57,7 +61,14 @@ function cookieOptions() {
 function authenticate(username, password) {
   const admin = findAdmin(String(username || "").trim());
   if (!admin || !bcrypt.compareSync(String(password || ""), admin.password_hash)) return null;
-  return { id: admin.id, username: admin.username };
+  return {
+    id: admin.id,
+    username: admin.username,
+    name: admin.username,
+    email: "",
+    authSource: "LOCAL",
+    role: "SUPER_ADMIN",
+  };
 }
 
 function requireAdmin(req, res, next) {

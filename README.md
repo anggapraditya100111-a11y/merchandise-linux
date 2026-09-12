@@ -1,4 +1,4 @@
-# AINET Merchandise untuk CasaOS dan Linux
+# AXINDO Merchandise untuk Ubuntu Server dan CasaOS
 
 Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak perlu login dan tidak melakukan pembayaran di website. Aplikasi hanya menghitung nominal serta mencatat order untuk admin kantor pusat.
 
@@ -16,6 +16,8 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 - Slider gambar dan popup galeri besar dengan navigasi foto untuk setiap produk di katalog.
 - Setelah order berhasil, browser membuka WhatsApp admin dengan ringkasan dan tautan PDF publik yang sudah terisi.
 - Ubah password admin dengan tombol mata; password baru minimal 8 karakter dan hanya menggunakan huruf serta angka.
+- Panel admin dapat masuk melalui AXINDO ID; login lokal tetap tersedia sebagai akses darurat.
+- Manifest role untuk Web Akses: Super Admin serta Pegawai/Pemesan.
 - Rekap order CSV; tidak ada status pesanan.
 - Backup/restore lengkap untuk database SQLite dan seluruh gambar.
 - Mendukung `amd64` dan `arm64` melalui Docker.
@@ -23,12 +25,22 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 ## Port dan lokasi data
 
 - Web: `8092`
-- Database: `/DATA/AppData/ainet-merchandise/database`
-- Gambar: `/DATA/AppData/ainet-merchandise/uploads`
-- Backup: `/DATA/AppData/ainet-merchandise/backups`
-- Area restore: `/DATA/AppData/ainet-merchandise/restore-tmp`
+- Source Ubuntu: `/opt/axindo-merchandise`
+- Data Ubuntu: `/var/lib/axindo-merchandise`
+- Source CasaOS: `/DATA/AppData/ainet-merchandise/app`
+- Data CasaOS: `/DATA/AppData/ainet-merchandise`
 
 Port 8092 dipilih agar tidak berbenturan dengan aplikasi Kas Kecil yang menggunakan port 8090.
+
+## Instalasi satu perintah di Ubuntu Server
+
+Docker Engine dan Docker Compose Plugin harus sudah tersedia. Jalankan:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/anggapraditya100111-a11y/merchandise-linux/main/install-ubuntu.sh | sudo bash
+```
+
+Installer memverifikasi paket dengan SHA-256, menaruh source di `/opt/axindo-merchandise`, menaruh database/gambar/backup di `/var/lib/axindo-merchandise`, membangun container, dan menjalankan health check. Cookie aman HTTPS sengaja belum diaktifkan agar backup CasaOS dapat dipulihkan melalui IP lokal sebelum domain dialihkan.
 
 ## Instalasi satu perintah di CasaOS
 
@@ -67,6 +79,14 @@ Secret aplikasi dibuat otomatis di volume database bila tidak diisi dari environ
 
 ## Memperbarui aplikasi
 
+Ubuntu Server:
+
+```bash
+sudo /opt/axindo-merchandise/update.sh
+```
+
+CasaOS:
+
 ```bash
 sudo /DATA/AppData/ainet-merchandise/app/update.sh
 ```
@@ -97,6 +117,23 @@ Restore memvalidasi format ZIP, mencegah path traversal, memeriksa integritas SQ
 
 `.env`, database, gambar, backup, dan area restore tidak disimpan ke GitHub.
 
+## AXINDO Access
+
+Manifest aplikasi tersedia di:
+
+```text
+https://katalog.axindo.my.id/.well-known/axindo-access.json
+```
+
+| Role | Grup Authentik |
+|---|---|
+| Super Admin | `AXINDO - MERCHANDISE - SUPER ADMIN` |
+| Pegawai / Pemesan | `AXINDO - MERCHANDISE - USER` |
+
+Katalog utama tetap publik tanpa login. Role Pegawai/Pemesan menentukan apakah kartu katalog tampil di **Aplikasi Saya**. Panel `/admin` memakai tombol **Masuk dengan AXINDO ID** dan hanya menerima grup Super Admin. Login admin lokal tetap tersedia sebagai akses darurat.
+
+Pertukaran sesi backend menggunakan `http://host.docker.internal:8096` pada host Ubuntu yang sama. Browser selalu memakai `https://akses.axindo.my.id`.
+
 ## Domain publik, WhatsApp, reverse proxy, dan HTTPS
 
 Masuk ke **Admin → Pengaturan → Identitas & tampilan**, lalu isi:
@@ -117,6 +154,14 @@ Lalu terapkan:
 
 ```bash
 docker compose up -d --force-recreate
+```
+
+Pada instalasi Ubuntu, `TRUST_PROXY=true` sudah aktif secara bawaan. Setelah Cloudflare Tunnel `katalog.axindo.my.id` diarahkan ke `http://IP-APPSERVER:8092` dan akses HTTPS berhasil, aktifkan cookie aman:
+
+```bash
+sudo sed -i 's/^COOKIE_SECURE=.*/COOKIE_SECURE=true/' /opt/axindo-merchandise/.env
+cd /opt/axindo-merchandise
+sudo docker compose --env-file .env up -d --force-recreate
 ```
 
 ## Perintah pemeliharaan
@@ -146,8 +191,8 @@ Test otomatis memeriksa katalog, kategori, galeri lima foto dan urutannya, penga
 Push tag versi untuk membangun image multi-arsitektur melalui GitHub Actions:
 
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.3.0
+git push origin v1.3.0
 ```
 
 Workflow menerbitkan `ghcr.io/anggapraditya100111-a11y/ainet-merchandise:latest`. Pastikan package GHCR diatur menjadi **Public** sebelum menggunakan `docker-compose.casaos.yml`.

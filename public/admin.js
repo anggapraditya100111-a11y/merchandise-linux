@@ -1,6 +1,7 @@
 (() => {
-  const state = { admin: null, orders: [], products: [], pops: [], categories: [], settings: null, tab: "orders", editingProduct: null, productImages: [] };
+  const state = { admin: null, orders: [], products: [], pops: [], categories: [], settings: null, config: null, tab: "orders", editingProduct: null, productImages: [] };
   let draggedImageKey = null;
+  let popupLogin = null;
   const el = (id) => document.getElementById(id);
   const rupiah = (value) => `Rp${new Intl.NumberFormat("id-ID").format(value)}`;
   const dateTime = (value) => new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
@@ -56,14 +57,144 @@
     el("login-view").classList.remove("hidden");
     el("login-error").textContent = error;
     el("login-error").classList.toggle("hidden", !error);
+    const ready = Boolean(state.config?.auth?.accessHandoffReady);
+    el("access-login").disabled = !ready;
+    el("access-login-status").textContent = ready
+      ? `Login aman melalui ${new URL(state.config.auth.accessPortalUrl).hostname}.`
+      : "Koneksi AXINDO Access pada server belum aktif. Gunakan login admin lokal.";
+    el("local-login-toggle").open = !ready;
   }
 
   function showAdmin(admin) {
     state.admin = admin;
     el("login-view").classList.add("hidden");
     el("admin-view").classList.remove("hidden");
-    el("admin-name").textContent = admin.username;
-    el("admin-initial").textContent = admin.username.slice(0, 1).toUpperCase();
+    const displayName = admin.name || admin.username;
+    el("admin-name").textContent = displayName;
+    el("admin-initial").textContent = displayName.slice(0, 1).toUpperCase();
+    el("admin-auth-source").textContent = admin.authSource === "ACCESS" ? "AXINDO ID · Super Admin" : "Admin lokal";
+    el("local-password-card").classList.toggle("hidden", admin.authSource === "ACCESS");
+  }
+
+  function randomPopupChannel() {
+    const bytes = new Uint8Array(24);
+    window.crypto.getRandomValues(bytes);
+    return `merch_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  }
+
+  function randomPopupVerifier() {
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  }
+
+  async function popupCodeChallenge(verifier) {
+    const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+    let binary = "";
+    for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte);
+    return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  }
+
+  function accessHandoffStorageKey(channel) {
+    return `merchandise-handoff:${channel}`;
+  }
+
+  async function completeRedirectedAccessHandoff() {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    if (params.get("access_handoff") !== "1") return false;
+    const channel = String(params.get("channel") || "");
+    const code = String(params.get("code") || "");
+    const verifier = sessionStorage.getItem(accessHandoffStorageKey(channel)) || "";
+    window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
+    if (!/^merch_[a-f0-9]{48}$/.test(channel) || !/^[a-zA-Z0-9_-]{40,200}$/.test(code) || !/^[a-zA-Z0-9_-]{43,128}$/.test(verifier)) {
+      throw new Error("Kode login dari AXINDO Access tidak valid atau sudah kedaluwarsa.");
+    }
+    await api("/api/auth/access/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code, verifier }) });
+    sessionStorage.removeItem(accessHandoffStorageKey(channel));
+    return true;
+  }
+
+  async function finishPopupLogin(success, error = "") {
+    const active = popupLogin;
+    if (!active) return;
+    popupLogin = null;
+    window.clearInterval(active.monitor);
+    sessionStorage.removeItem(accessHandoffStorageKey(active.channel));
+    if (active.window && !active.window.closed) active.window.close();
+    el("access-login").disabled = !state.config?.auth?.accessHandoffReady;
+    if (!success) return showLogin(error || "Login AXINDO ID belum berhasil.");
+    const data = await api("/api/admin/session");
+    showAdmin(data.admin);
+    await loadAll();
+    message("Login AXINDO ID berhasil.");
+  }
+
+  async function startAccessPopupLogin() {
+    const access = state.config?.auth;
+    if (!access?.accessHandoffReady) return showLogin("Koneksi AXINDO Access pada server belum aktif.");
+    if (popupLogin?.window && !popupLogin.window.closed) return popupLogin.window.focus();
+    const channel = randomPopupChannel();
+    const verifier = randomPopupVerifier();
+    sessionStorage.setItem(accessHandoffStorageKey(channel), verifier);
+    const width = Math.min(470, Math.max(360, window.screen.availWidth - 24));
+    const height = Math.min(760, Math.max(600, window.screen.availHeight - 48));
+    const popup = window.open("about:blank", channel, `popup=yes,width=${width},height=${height},resizable=yes,scrollbars=yes`);
+    if (!popup) {
+      sessionStorage.removeItem(accessHandoffStorageKey(channel));
+      return showLogin("Popup diblokir browser. Izinkan popup untuk katalog lalu coba kembali.");
+    }
+    popupLogin = {
+      window: popup,
+      channel,
+      verifier,
+      stage: "preparing",
+      accessOrigin: access.accessPortalOrigin,
+      monitor: window.setInterval(() => {
+        const active = popupLogin;
+        if (!active || !popup.closed) {
+          if (active) active.closedAt = 0;
+          return;
+        }
+        if (active.stage === "exchange") return;
+        if (!active.closedAt) return void (active.closedAt = Date.now());
+        if (Date.now() - active.closedAt < 1500 || active.checkingSession) return;
+        active.checkingSession = true;
+        api("/api/admin/session").then(() => finishPopupLogin(true)).catch(() => finishPopupLogin(false, "Popup login ditutup sebelum proses selesai."));
+      }, 250),
+    };
+    el("access-login").disabled = true;
+    el("access-login-status").textContent = "Membuka AXINDO Access…";
+    popup.focus();
+    try {
+      const accessUrl = new URL(access.accessPortalPopupUrl);
+      accessUrl.searchParams.set("handoff", "merchandise");
+      accessUrl.searchParams.set("channel", channel);
+      accessUrl.searchParams.set("return_origin", window.location.origin);
+      accessUrl.searchParams.set("code_challenge", await popupCodeChallenge(verifier));
+      if (!popupLogin || popup.closed) return;
+      popupLogin.stage = "access";
+      popup.location.replace(accessUrl.href);
+      el("access-login-status").textContent = "Menunggu login dari AXINDO Access…";
+    } catch {
+      finishPopupLogin(false, "Popup AXINDO Access tidak dapat dibuka.");
+    }
+  }
+
+  function handlePopupLoginMessage(event) {
+    const active = popupLogin;
+    if (!active || event.source !== active.window || event.data?.channel !== active.channel) return;
+    if (active.stage !== "access" || event.origin !== active.accessOrigin || event.data?.type !== "axindo-access-handoff") return;
+    if (event.data.status !== "success") return finishPopupLogin(false, event.data.message || "Login AXINDO Access gagal.");
+    if (!/^[a-zA-Z0-9_-]{40,200}$/.test(String(event.data.code || ""))) return finishPopupLogin(false, "Kode AXINDO Access tidak valid.");
+    active.stage = "exchange";
+    el("access-login-status").textContent = "Membuat sesi admin…";
+    api("/api/auth/access/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: event.data.code, verifier: active.verifier }),
+    }).then(() => finishPopupLogin(true)).catch((error) => finishPopupLogin(false, error.message));
   }
 
   async function loadAll() {
@@ -227,6 +358,8 @@
       showAdmin(data.admin); await loadAll();
     } catch (error) { showLogin(error.message); }
   });
+  el("access-login").addEventListener("click", startAccessPopupLogin);
+  window.addEventListener("message", handlePopupLoginMessage);
   el("logout").addEventListener("click", async () => { await api("/api/admin/session", { method: "DELETE" }).catch(() => {}); showLogin(); });
   document.querySelector(".sidebar nav").addEventListener("click", (event) => { const button = event.target.closest("[data-tab]"); if (button) switchTab(button.dataset.tab); });
   document.querySelector(".settings-subnav").addEventListener("click", (event) => { const button = event.target.closest("[data-settings-section]"); if (button) switchSettingsSection(button.dataset.settingsSection); });
@@ -379,6 +512,8 @@
 
   (async () => {
     try { const publicSettings = await api("/api/settings"); applySettings(publicSettings.settings); } catch {}
+    try { state.config = await api("/api/public/config"); } catch { state.config = { auth: { accessHandoffReady: false } }; }
+    try { await completeRedirectedAccessHandoff(); } catch (error) { showLogin(error.message); return; }
     try { const data = await api("/api/admin/session"); showAdmin(data.admin); await loadAll(); } catch { showLogin(); }
   })();
 })();

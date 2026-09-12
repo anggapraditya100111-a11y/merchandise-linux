@@ -5,14 +5,16 @@ const path = require("node:path");
 
 const root = path.join(__dirname, "..");
 const installer = fs.readFileSync(path.join(root, "install-casaos.sh"), "utf8");
+const ubuntuInstaller = fs.readFileSync(path.join(root, "install-ubuntu.sh"), "utf8");
 const updater = fs.readFileSync(path.join(root, "update.sh"), "utf8");
+const server = fs.readFileSync(path.join(root, "src", "server.js"), "utf8");
 const catalogScript = fs.readFileSync(path.join(root, "public", "app.js"), "utf8");
 const adminScript = fs.readFileSync(path.join(root, "public", "admin.js"), "utf8");
 const adminHtml = fs.readFileSync(path.join(root, "public", "admin.html"), "utf8");
 const compose = fs.readFileSync(path.join(root, "docker-compose.yml"), "utf8");
 
 test("installer dan updater memakai jalur paket raw GitHub", () => {
-  for (const script of [installer, updater]) {
+  for (const script of [installer, ubuntuInstaller, updater]) {
     assert.match(script, /raw\.githubusercontent\.com/);
     assert.match(script, /sha256sum --check/);
     assert.doesNotMatch(script, /git clone|git fetch|git pull/);
@@ -45,4 +47,16 @@ test("form password menyimpan referensi dan menyediakan kontrol tampilkan passwo
 
 test("konfigurasi CasaOS mempercayai reverse proxy secara default", () => {
   assert.match(compose, /TRUST_PROXY: "\$\{TRUST_PROXY:-true\}"/);
+});
+
+test("deployment Ubuntu dan AXINDO Access tersedia", () => {
+  assert.match(ubuntuInstaller, /\/opt\/axindo-merchandise/);
+  assert.match(ubuntuInstaller, /\/var\/lib\/axindo-merchandise/);
+  assert.match(compose, /host\.docker\.internal:host-gateway/);
+  assert.match(server, /\.well-known\/axindo-access\.json/);
+  assert.match(server, /audience: "merchandise"/);
+  assert.match(server, /AXINDO - MERCHANDISE - SUPER ADMIN/);
+  assert.match(adminScript, /axindo-access-handoff/);
+  assert.match(adminScript, /Date\.now\(\) - active\.closedAt < 1500/);
+  assert.match(catalogScript, /merchandise-handoff:/);
 });

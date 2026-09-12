@@ -30,14 +30,20 @@ if [ ! -f .env ]; then
   cp .env.example .env
   sed -i "s/GANTI_DENGAN_RANDOM_SECRET_MINIMAL_64_KARAKTER/$app_secret/" .env
   sed -i "s/GantiPasswordAdmin123/$admin_password/" .env
+  if [ -n "${AINET_DATA_ROOT:-}" ]; then
+    sed -i "s|^DATA_ROOT=.*|DATA_ROOT=$AINET_DATA_ROOT|" .env
+  fi
+  if [ -n "${AINET_COOKIE_SECURE:-}" ]; then
+    sed -i "s|^COOKIE_SECURE=.*|COOKIE_SECURE=$AINET_COOKIE_SECURE|" .env
+  fi
   chmod 600 .env
   created_env=true
 fi
 
 data_root="$(sed -n 's/^DATA_ROOT=//p' .env | tail -n 1)"
-data_root="${data_root:-/DATA/AppData/ainet-merchandise}"
+data_root="${data_root:-/var/lib/axindo-merchandise}"
 case "$data_root" in
-  ""|"/"|"/DATA"|"/DATA/"|"/DATA/AppData"|"/DATA/AppData/")
+  ""|"/"|"/DATA"|"/DATA/"|"/DATA/AppData"|"/DATA/AppData/"|"/var"|"/var/"|"/var/lib"|"/var/lib/")
     echo "DATA_ROOT tidak aman: '$data_root'. Gunakan folder khusus aplikasi."
     exit 1
     ;;

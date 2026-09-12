@@ -8,7 +8,7 @@ package_name="ainet-merchandise-latest.tar.gz"
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 
 case "$app_directory" in
-  ""|"/"|"/DATA"|"/DATA/"|"/DATA/AppData"|"/DATA/AppData/")
+  ""|"/"|"/DATA"|"/DATA/"|"/DATA/AppData"|"/DATA/AppData/"|"/opt"|"/opt/")
     echo "Lokasi aplikasi tidak aman: '$app_directory'."
     exit 1
     ;;
@@ -32,8 +32,8 @@ if [ ! -f "$app_directory/.env" ]; then
 fi
 
 staging_directory="$(mktemp -d /tmp/ainet-merchandise-update.XXXXXX)"
-rollback_directory="$install_root/source-rollback-$timestamp"
-failed_source_directory="$install_root/source-gagal-$timestamp"
+rollback_directory="$install_root/axindo-merchandise-source-rollback-$timestamp"
+failed_source_directory="$install_root/axindo-merchandise-source-gagal-$timestamp"
 cleanup() {
   rm -rf -- "$staging_directory"
 }
@@ -65,7 +65,7 @@ curl --fail --location --silent --show-error --retry 3 --connect-timeout 20 --ma
 mkdir -p "$staging_directory/source"
 tar -xzf "$staging_directory/$package_name" -C "$staging_directory/source"
 new_source="$staging_directory/source"
-for required_file in Dockerfile docker-compose.yml install.sh update.sh VERSION.txt; do
+for required_file in Dockerfile docker-compose.yml install.sh install-ubuntu.sh update.sh VERSION.txt; do
   if [ ! -f "$new_source/$required_file" ]; then
     echo "Paket pembaruan tidak lengkap: $required_file tidak ditemukan."
     exit 1
@@ -103,12 +103,12 @@ while IFS= read -r -d '' item; do
 done < <(find "$new_source" -mindepth 1 -maxdepth 1 -print0)
 printf '%s\n' "$package_hash" > "$app_directory/.package-sha256"
 chmod 600 "$app_directory/.package-sha256"
-chmod +x "$app_directory/install.sh" "$app_directory/update.sh" "$app_directory/install-casaos.sh"
+chmod +x "$app_directory/install.sh" "$app_directory/update.sh" "$app_directory/install-casaos.sh" "$app_directory/install-ubuntu.sh"
 
 cd "$app_directory"
 if grep -qx 'TRUST_PROXY=false' .env; then
   sed -i 's/^TRUST_PROXY=false$/TRUST_PROXY=true/' .env
-  echo "Konfigurasi reverse proxy CasaOS diaktifkan untuk mencegah kegagalan login admin."
+  echo "Konfigurasi reverse proxy diaktifkan untuk mencegah kegagalan login admin."
 elif ! grep -q '^TRUST_PROXY=' .env; then
   printf '\nTRUST_PROXY=true\n' >> .env
 fi

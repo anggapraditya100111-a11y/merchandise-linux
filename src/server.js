@@ -17,6 +17,10 @@ const PUBLIC_DIR = path.join(ROOT, "public");
 const RESTORE_TMP_DIR = path.resolve(process.env.RESTORE_TMP_DIR || path.join(ROOT, "restore-tmp"));
 const VERSION = fs.readFileSync(path.join(ROOT, "VERSION.txt"), "utf8").trim();
 const PORT = Number(process.env.PORT || 8092);
+const ACCESS_PORTAL_URL = normalizedAccessPortalUrl(process.env.ACCESS_PORTAL_URL);
+const ACCESS_PORTAL_INTERNAL_URL = normalizedInternalAccessUrl(process.env.ACCESS_PORTAL_INTERNAL_URL || ACCESS_PORTAL_URL);
+const ACCESS_HANDOFF_ENABLED = String(process.env.ACCESS_HANDOFF_ENABLED || "true").toLowerCase() === "true";
+const ACCESS_ADMIN_GROUP = String(process.env.ACCESS_ADMIN_GROUP || "AXINDO - MERCHANDISE - SUPER ADMIN").trim();
 
 for (const directory of [db.UPLOAD_DIR, db.BACKUP_DIR, RESTORE_TMP_DIR]) fs.mkdirSync(directory, { recursive: true });
 db.initDatabase();
@@ -109,6 +113,58 @@ function publicBaseUrl(value) {
   return parsed.toString().replace(/\/+$/, "");
 }
 
+function normalizedAccessPortalUrl(value) {
+  try {
+    const url = new URL(String(value || "https://akses.axindo.my.id").trim());
+    if (url.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(url.hostname)) throw new Error();
+    url.pathname = url.pathname.replace(/\/$/, "");
+    url.search = "";
+    url.hash = "";
+    return url.href.replace(/\/$/, "");
+  } catch {
+    return "https://akses.axindo.my.id";
+  }
+}
+
+function normalizedInternalAccessUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error();
+    url.pathname = url.pathname.replace(/\/$/, "");
+    url.search = "";
+    url.hash = "";
+    return url.href.replace(/\/$/, "");
+  } catch {
+    return ACCESS_PORTAL_URL;
+  }
+}
+
+function publicAdmin(admin) {
+  return {
+    username: admin.username,
+    name: admin.name || admin.username,
+    email: admin.email || "",
+    authSource: admin.authSource || "LOCAL",
+    role: "SUPER_ADMIN",
+  };
+}
+
+function accessManifest() {
+  const settings = db.getSettings();
+  const url = settings.publicBaseUrl || String(process.env.PUBLIC_APP_URL || "https://katalog.axindo.my.id").replace(/\/$/, "");
+  return {
+    schemaVersion: 1,
+    id: "merchandise",
+    name: settings.appName || "AXINDO Merchandise",
+    description: "Katalog dan pencatatan pesanan merchandise internal AXINDO.",
+    url,
+    roles: [
+      { code: "SUPER_ADMIN", label: "Super Admin", assignment: "OIDC", group: ACCESS_ADMIN_GROUP },
+      { code: "USER", label: "Pegawai / Pemesan", assignment: "OIDC", group: "AXINDO - MERCHANDISE - USER" },
+    ],
+  };
+}
+
 function variants(value) {
   if (Array.isArray(value)) return value;
   return String(value || "").split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
@@ -169,6 +225,23 @@ app.get("/api/health", (_req, res) => {
   }
 });
 
+app.get("/api/public/config", (_req, res) => {
+  res.set("Cache-Control", "no-store").json({
+    version: VERSION,
+    auth: {
+      accessHandoffReady: ACCESS_HANDOFF_ENABLED,
+      accessPortalUrl: ACCESS_PORTAL_URL,
+      accessPortalOrigin: new URL(ACCESS_PORTAL_URL).origin,
+      accessPortalPopupUrl: `${ACCESS_PORTAL_URL}/handoff?handoff=merchandise`,
+      localLoginEnabled: true,
+    },
+  });
+});
+
+app.get("/.well-known/axindo-access.json", (_req, res) => {
+  res.set("Cache-Control", "public, max-age=300, must-revalidate").json(accessManifest());
+});
+
 app.get("/api/catalog", (_req, res) => {
   res.json({ products: db.listProducts({ activeOnly: true }), pops: db.listPops({ activeOnly: true }), settings: db.getSettings() });
 });
@@ -223,13 +296,63 @@ app.post("/api/admin/session", loginLimiter, auth.rejectCrossSite, (req, res) =>
   const admin = auth.authenticate(req.body.username, req.body.password);
   if (!admin) return res.status(401).json({ error: "Username atau password salah." });
   res.cookie(auth.COOKIE_NAME, auth.issueToken(admin), auth.cookieOptions());
-  res.json({ admin: { username: admin.username } });
+  res.json({ admin: publicAdmin(admin) });
+});
+
+app.post("/api/auth/access/complete", loginLimiter, auth.rejectCrossSite, async (req, res) => {
+  try {
+    if (!ACCESS_HANDOFF_ENABLED) return res.status(404).json({ error: "Login AXINDO Access belum diaktifkan." });
+    const code = String(req.body?.code || "");
+    const verifier = String(req.body?.verifier || "");
+    if (!/^[a-zA-Z0-9_-]{40,200}$/.test(code) || !/^[a-zA-Z0-9_-]{43,128}$/.test(verifier)) {
+      return res.status(401).json({ error: "Kode login AXINDO Access tidak valid." });
+    }
+
+    let response;
+    try {
+      response = await fetch(`${ACCESS_PORTAL_INTERNAL_URL}/api/auth/handoff/exchange`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json", "x-axindo-handoff": "1" },
+        body: JSON.stringify({ code, verifier, audience: "merchandise" }),
+        signal: AbortSignal.timeout(8_000),
+      });
+    } catch (error) {
+      console.error("Pertukaran sesi AXINDO Access gagal:", error.message);
+      return res.status(502).json({ error: "AXINDO Access belum dapat dihubungi." });
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return res.status(response.status === 403 ? 403 : 401).json({ error: payload.error || "Kode login AXINDO Access tidak berlaku." });
+    let expectedReturnOrigin;
+    try { expectedReturnOrigin = new URL(accessManifest().url).origin; } catch { expectedReturnOrigin = "https://katalog.axindo.my.id"; }
+    if (payload.audience !== "merchandise" || payload.returnOrigin !== expectedReturnOrigin || !payload.identity?.subject) {
+      return res.status(502).json({ error: "Respons AXINDO Access tidak valid." });
+    }
+    const groups = new Set((Array.isArray(payload.groups) ? payload.groups : []).map((group) => String(group).trim().toLowerCase()));
+    if (!groups.has(ACCESS_ADMIN_GROUP.toLowerCase())) {
+      return res.status(403).json({ error: "Akun AXINDO ID ini tidak memiliki role Super Admin Merchandise." });
+    }
+
+    const identity = payload.identity;
+    const admin = {
+      id: `access:${identity.subject}`,
+      username: String(identity.username || identity.email || identity.subject),
+      name: String(identity.name || identity.username || identity.email || "Administrator"),
+      email: String(identity.email || ""),
+      authSource: "ACCESS",
+      role: "SUPER_ADMIN",
+    };
+    res.cookie(auth.COOKIE_NAME, auth.issueToken(admin), auth.cookieOptions());
+    res.json({ admin: publicAdmin(admin) });
+  } catch (error) {
+    errorResponse(res, error, "Login AXINDO Access gagal diproses.");
+  }
 });
 
 app.get("/api/admin/session", (req, res) => {
   const admin = auth.verifyToken(req.cookies?.[auth.COOKIE_NAME]);
   if (!admin) return res.status(401).json({ error: "Belum login." });
-  res.json({ admin: { username: admin.username } });
+  res.json({ admin: publicAdmin(admin) });
 });
 
 app.delete("/api/admin/session", auth.rejectCrossSite, (_req, res) => {
@@ -348,6 +471,9 @@ app.put("/api/admin/settings", auth.requireAdmin, auth.rejectCrossSite, imageUpl
 
 app.post("/api/admin/password", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
   try {
+    if (req.admin.authSource === "ACCESS") {
+      return res.status(400).json({ error: "Password AXINDO ID dikelola melalui menu Keamanan di AXINDO Access." });
+    }
     const current = db.findAdmin(req.admin.username);
     if (!current || !bcrypt.compareSync(String(req.body.currentPassword || ""), current.password_hash)) {
       return res.status(400).json({ error: "Password saat ini salah." });

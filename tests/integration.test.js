@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const http = require("node:http");
 const { spawn } = require("node:child_process");
 const { DatabaseSync } = require("node:sqlite");
 const { safeEntryPath } = require("../src/backup");
@@ -364,4 +365,91 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   const finalOrders = await fetch(`${base}/api/admin/orders`, { headers: { cookie } }).then((response) => response.json());
   assert.equal(finalOrders.orders.length, 1);
   assert.doesNotMatch(stderr, /ERR_ERL_UNEXPECTED_X_FORWARDED_FOR/);
+});
+
+test("manifest dan login admin terhubung ke AXINDO Access", { timeout: 20_000 }, async (context) => {
+  const accessServer = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+    assert.equal(req.url, "/api/auth/handoff/exchange");
+    assert.equal(req.headers["x-axindo-handoff"], "1");
+    assert.equal(body.audience, "merchandise");
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      audience: "merchandise",
+      returnOrigin: "https://katalog.axindo.my.id",
+      identity: { subject: "user-123", username: "angga", name: "Angga Praditya", email: "angga@axindo.my.id" },
+      groups: body.code.startsWith("z") ? ["AXINDO - MERCHANDISE - USER"] : ["AXINDO - MERCHANDISE - SUPER ADMIN"],
+    }));
+  });
+  await new Promise((resolve) => accessServer.listen(0, "127.0.0.1", resolve));
+  const accessPort = accessServer.address().port;
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "ainet-merch-access-"));
+  const port = 20500 + Math.floor(Math.random() * 300);
+  const child = spawn(process.execPath, [path.join(__dirname, "..", "src", "server.js")], {
+    cwd: path.join(__dirname, ".."),
+    env: {
+      ...process.env,
+      PORT: String(port), DATA_DIR: path.join(root, "data"), UPLOAD_DIR: path.join(root, "uploads"),
+      BACKUP_DIR: path.join(root, "backups"), RESTORE_TMP_DIR: path.join(root, "restore"),
+      APP_SECRET: "access-test-secret-with-more-than-sixty-four-characters-1234567890",
+      INITIAL_ADMIN_PASSWORD: "AdminPassword123", COOKIE_SECURE: "false", NODE_NO_WARNINGS: "1",
+      ACCESS_HANDOFF_ENABLED: "true", ACCESS_PORTAL_URL: "https://akses.axindo.my.id",
+      ACCESS_PORTAL_INTERNAL_URL: `http://127.0.0.1:${accessPort}`,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  context.after(async () => {
+    if (child.exitCode === null) {
+      child.kill("SIGTERM");
+      await new Promise((resolve) => child.once("exit", resolve));
+    }
+    await new Promise((resolve) => accessServer.close(resolve));
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${port}`;
+  await waitFor(`${base}/api/health`, child);
+
+  const manifestResponse = await fetch(`${base}/.well-known/axindo-access.json`);
+  assert.equal(manifestResponse.status, 200);
+  const manifest = await manifestResponse.json();
+  assert.equal(manifest.id, "merchandise");
+  assert.equal(manifest.url, "https://katalog.axindo.my.id");
+  assert.ok(manifest.roles.some((role) => role.code === "SUPER_ADMIN" && role.group === "AXINDO - MERCHANDISE - SUPER ADMIN"));
+  assert.ok(manifest.roles.some((role) => role.code === "USER" && role.group === "AXINDO - MERCHANDISE - USER"));
+
+  const config = await fetch(`${base}/api/public/config`).then((response) => response.json());
+  assert.equal(config.auth.accessHandoffReady, true);
+  assert.match(config.auth.accessPortalPopupUrl, /\/handoff\?handoff=merchandise$/);
+
+  const code = Buffer.alloc(32, 1).toString("base64url");
+  const verifier = Buffer.alloc(32, 2).toString("base64url");
+  const loginResponse = await fetch(`${base}/api/auth/access/complete`, {
+    method: "POST", headers: { "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ code, verifier }),
+  });
+  assert.equal(loginResponse.status, 200, stderr);
+  const login = await loginResponse.json();
+  assert.equal(login.admin.authSource, "ACCESS");
+  const cookie = loginResponse.headers.get("set-cookie").split(";")[0];
+  const session = await fetch(`${base}/api/admin/session`, { headers: { cookie } }).then((response) => response.json());
+  assert.equal(session.admin.email, "angga@axindo.my.id");
+  const orders = await fetch(`${base}/api/admin/orders`, { headers: { cookie } });
+  assert.equal(orders.status, 200);
+  const password = await fetch(`${base}/api/admin/password`, {
+    method: "POST", headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ currentPassword: "unused", newPassword: "Admin2026" }),
+  });
+  assert.equal(password.status, 400);
+  assert.match((await password.json()).error, /AXINDO ID/);
+
+  const rejected = await fetch(`${base}/api/auth/access/complete`, {
+    method: "POST", headers: { "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ code: "z".repeat(43), verifier }),
+  });
+  assert.equal(rejected.status, 403);
+  assert.match((await rejected.json()).error, /tidak memiliki role Super Admin/);
 });

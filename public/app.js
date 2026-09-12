@@ -6,6 +6,29 @@
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
   const productIcon = (category) => category.toLowerCase().includes("sepatu") ? "👟" : category.toLowerCase().includes("mug") || category.toLowerCase().includes("akses") ? "☕" : "👕";
 
+  async function completeRedirectedAccessHandoff() {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    if (params.get("access_handoff") !== "1") return false;
+    const channel = String(params.get("channel") || "");
+    const code = String(params.get("code") || "");
+    const storageKey = `merchandise-handoff:${channel}`;
+    const verifier = sessionStorage.getItem(storageKey) || "";
+    window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
+    if (!/^merch_[a-f0-9]{48}$/.test(channel) || !/^[a-zA-Z0-9_-]{40,200}$/.test(code) || !/^[a-zA-Z0-9_-]{43,128}$/.test(verifier)) {
+      throw new Error("Kode login dari AXINDO Access tidak valid atau sudah kedaluwarsa.");
+    }
+    const response = await fetch("/api/auth/access/complete", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, verifier }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Login AXINDO Access gagal.");
+    sessionStorage.removeItem(storageKey);
+    window.location.replace("/admin");
+    return true;
+  }
+
   function imageList(product) {
     if (Array.isArray(product.images) && product.images.length) return product.images.map((image) => ({ url: image.url }));
     return product.imageUrl ? [{ url: product.imageUrl }] : [];
@@ -277,6 +300,13 @@
       if (event.key === "ArrowRight") moveLightbox(1);
     } else if (event.key === "Escape") closeSuccess();
   });
-  renderCart();
-  loadCatalog();
+  (async () => {
+    try {
+      if (await completeRedirectedAccessHandoff()) return;
+    } catch (error) {
+      showError("catalog-error", error.message || "Login AXINDO Access gagal.");
+    }
+    renderCart();
+    loadCatalog();
+  })();
 })();
