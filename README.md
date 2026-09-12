@@ -125,6 +125,12 @@ Manifest aplikasi tersedia di:
 https://katalog.axindo.my.id/.well-known/axindo-access.json
 ```
 
+Jika reverse proxy atau Cloudflare memblokir jalur `/.well-known`, gunakan endpoint kompatibel:
+
+```text
+https://katalog.axindo.my.id/api/public/axindo-access.json
+```
+
 | Role | Grup Authentik |
 |---|---|
 | Super Admin | `AXINDO - MERCHANDISE - SUPER ADMIN` |
@@ -191,8 +197,8 @@ Test otomatis memeriksa katalog, kategori, galeri lima foto dan urutannya, penga
 Push tag versi untuk membangun image multi-arsitektur melalui GitHub Actions:
 
 ```bash
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.3.1
+git push origin v1.3.1
 ```
 
 Workflow menerbitkan `ghcr.io/anggapraditya100111-a11y/ainet-merchandise:latest`. Pastikan package GHCR diatur menjadi **Public** sebelum menggunakan `docker-compose.casaos.yml`.

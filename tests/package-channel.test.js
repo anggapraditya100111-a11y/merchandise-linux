@@ -54,6 +54,7 @@ test("deployment Ubuntu dan AXINDO Access tersedia", () => {
   assert.match(ubuntuInstaller, /\/var\/lib\/axindo-merchandise/);
   assert.match(compose, /host\.docker\.internal:host-gateway/);
   assert.match(server, /\.well-known\/axindo-access\.json/);
+  assert.match(server, /api\/public\/axindo-access\.json/);
   assert.match(server, /audience: "merchandise"/);
   assert.match(server, /AXINDO - MERCHANDISE - SUPER ADMIN/);
   assert.match(adminScript, /axindo-access-handoff/);

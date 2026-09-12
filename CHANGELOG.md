@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1 — 2026-09-12
+
+- Tambahkan endpoint manifest kompatibel `/api/public/axindo-access.json` untuk jaringan yang memblokir jalur `/.well-known`.
+- Pertahankan endpoint manifest standar agar integrasi yang sudah berjalan tetap kompatibel.
+
 ## 1.3.0 — 2026-09-12
 
 - Tambahkan installer khusus Ubuntu Server dengan source di `/opt/axindo-merchandise` dan data persisten di `/var/lib/axindo-merchandise`.

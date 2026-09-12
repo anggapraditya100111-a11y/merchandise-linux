@@ -421,6 +421,10 @@ test("manifest dan login admin terhubung ke AXINDO Access", { timeout: 20_000 },
   assert.ok(manifest.roles.some((role) => role.code === "SUPER_ADMIN" && role.group === "AXINDO - MERCHANDISE - SUPER ADMIN"));
   assert.ok(manifest.roles.some((role) => role.code === "USER" && role.group === "AXINDO - MERCHANDISE - USER"));
 
+  const compatibilityManifestResponse = await fetch(`${base}/api/public/axindo-access.json`);
+  assert.equal(compatibilityManifestResponse.status, 200);
+  assert.deepEqual(await compatibilityManifestResponse.json(), manifest);
+
   const config = await fetch(`${base}/api/public/config`).then((response) => response.json());
   assert.equal(config.auth.accessHandoffReady, true);
   assert.match(config.auth.accessPortalPopupUrl, /\/handoff\?handoff=merchandise$/);

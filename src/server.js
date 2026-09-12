@@ -238,7 +238,7 @@ app.get("/api/public/config", (_req, res) => {
   });
 });
 
-app.get("/.well-known/axindo-access.json", (_req, res) => {
+app.get(["/.well-known/axindo-access.json", "/api/public/axindo-access.json"], (_req, res) => {
   res.set("Cache-Control", "public, max-age=300, must-revalidate").json(accessManifest());
 });
 
