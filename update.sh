@@ -102,7 +102,19 @@ fi
 
 echo "Membangun versi terbaru..."
 new_image_ref="ainet-merchandise:$expected_version"
-if ! docker build --no-cache --file "$new_source/Dockerfile" --tag "$new_image_ref" "$new_source"; then
+build_ok=false
+if docker buildx version >/dev/null 2>&1; then
+  if tar -C "$new_source" -cf - . \
+    | docker buildx build --load --provenance=false --no-cache --tag "$new_image_ref" -; then
+    build_ok=true
+  fi
+else
+  if tar -C "$new_source" -cf - . \
+    | DOCKER_BUILDKIT=0 docker build --no-cache --tag "$new_image_ref" -; then
+    build_ok=true
+  fi
+fi
+if [ "$build_ok" != true ]; then
   echo "Build versi baru gagal. Source dan container lama tetap digunakan."
   exit 1
 fi

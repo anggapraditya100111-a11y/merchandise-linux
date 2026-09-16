@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.5 — 2026-09-16
+
+- Kirim source build sebagai stream tar agar BuildKit menerima tepat isi paket yang sudah diverifikasi.
+- Muat hasil BuildKit sebagai image lokal tunggal tanpa provenance/attestation manifest yang dapat mempertahankan referensi image lama.
+- Sediakan fallback classic builder untuk server yang belum memiliki plugin Docker Buildx.
+
 ## 1.5.4 — 2026-09-16
 
 - Bangun image langsung dari direktori source staging yang eksplisit agar Docker tidak mengambil konteks build aplikasi lama.
