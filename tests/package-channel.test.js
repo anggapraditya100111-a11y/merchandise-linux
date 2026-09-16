@@ -11,6 +11,7 @@ const server = fs.readFileSync(path.join(root, "src", "server.js"), "utf8");
 const catalogScript = fs.readFileSync(path.join(root, "public", "app.js"), "utf8");
 const adminScript = fs.readFileSync(path.join(root, "public", "admin.js"), "utf8");
 const adminHtml = fs.readFileSync(path.join(root, "public", "admin.html"), "utf8");
+const styles = fs.readFileSync(path.join(root, "public", "styles.css"), "utf8");
 const compose = fs.readFileSync(path.join(root, "docker-compose.yml"), "utf8");
 
 test("installer dan updater memakai jalur paket raw GitHub", () => {
@@ -64,4 +65,13 @@ test("deployment Ubuntu dan AXINDO Access tersedia", () => {
   assert.match(catalogScript, /window\.name === channel/);
   assert.match(server, /same-origin-allow-popups/);
   assert.match(server, /req\.admin\.authSource === "ACCESS"/);
+});
+
+test("deskripsi multiline dan status pesanan tersedia di katalog serta admin", () => {
+  assert.match(catalogScript, /class="product-description"/);
+  assert.match(styles, /\.product-description\{white-space:pre-line\}/);
+  assert.match(adminHtml, /data-order-status="PROCESSING"/);
+  assert.match(adminHtml, /data-order-status="DONE"/);
+  assert.match(adminScript, /data-order-status-change="DONE"/);
+  assert.match(server, /api\/admin\/orders\/:number\/status/);
 });

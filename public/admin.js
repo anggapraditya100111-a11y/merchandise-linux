@@ -1,5 +1,5 @@
 (() => {
-  const state = { admin: null, orders: [], products: [], pops: [], categories: [], settings: null, config: null, tab: "orders", editingProduct: null, productImages: [] };
+  const state = { admin: null, orders: [], products: [], pops: [], categories: [], settings: null, config: null, tab: "orders", orderStatus: "PROCESSING", editingProduct: null, productImages: [] };
   let draggedImageKey = null;
   let popupLogin = null;
   const el = (id) => document.getElementById(id);
@@ -215,18 +215,25 @@
 
   function renderOrders() {
     const query = el("order-search").value.trim().toLowerCase();
-    const orders = state.orders.filter((order) => !query || [order.orderNumber, order.customerName, order.popName, order.whatsapp, order.note].some((value) => String(value || "").toLowerCase().includes(query)));
+    const orders = state.orders.filter((order) => order.status === state.orderStatus && (!query || [order.orderNumber, order.customerName, order.popName, order.whatsapp, order.note].some((value) => String(value || "").toLowerCase().includes(query))));
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
     const month = today.slice(0, 7);
     el("metric-orders").textContent = state.orders.length;
     el("metric-today").textContent = state.orders.filter((order) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(order.createdAt)) === today).length;
     el("metric-month").textContent = rupiah(state.orders.filter((order) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).format(new Date(order.createdAt)).replace("/", "-") === month).reduce((sum, order) => sum + order.total, 0));
+    el("processing-count").textContent = state.orders.filter((order) => order.status === "PROCESSING").length;
+    el("done-count").textContent = state.orders.filter((order) => order.status === "DONE").length;
+    document.querySelectorAll("[data-order-status]").forEach((button) => {
+      const active = button.dataset.orderStatus === state.orderStatus;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
     el("orders-body").innerHTML = orders.map((order) => `<tr>
       <td><b>${escapeHtml(order.orderNumber)}</b></td><td>${escapeHtml(dateTime(order.createdAt))}</td>
       <td><strong>${escapeHtml(order.customerName)}</strong><small>${escapeHtml(order.whatsapp)}</small></td><td>${escapeHtml(order.popName)}</td>
       <td>${order.items.map((item) => `<small>${escapeHtml(item.productName)}${item.variant ? ` · ${escapeHtml(item.variantLabel || "Ukuran")}: ${escapeHtml(item.variant)}` : ""} × ${item.quantity}</small>`).join("")}</td>
-      <td><b>${rupiah(order.total)}</b></td><td><span class="table-actions"><button class="table-action" data-order="${order.orderNumber}">Detail</button><button class="table-action danger-text" data-delete-order="${order.orderNumber}">Hapus</button></span></td>
-    </tr>`).join("") || `<tr><td colspan="7" class="empty-table">Belum ada pesanan.</td></tr>`;
+      <td><b>${rupiah(order.total)}</b></td><td><span class="order-status-badge ${order.status === "DONE" ? "done" : "processing"}">${order.status === "DONE" ? "Selesai" : "On proses"}</span>${order.completedAt ? `<small>${escapeHtml(dateTime(order.completedAt))}</small>` : ""}</td><td><span class="table-actions"><button class="table-action" data-order="${order.orderNumber}">Detail</button>${order.status === "DONE" ? `<button class="table-action" data-order-status-change="PROCESSING" data-order-number="${order.orderNumber}">Buka kembali</button>` : `<button class="table-action done-action" data-order-status-change="DONE" data-order-number="${order.orderNumber}">✓ Selesai</button>`}<button class="table-action danger-text" data-delete-order="${order.orderNumber}">Hapus</button></span></td>
+    </tr>`).join("") || `<tr><td colspan="8" class="empty-table">Belum ada pesanan ${state.orderStatus === "DONE" ? "selesai" : "yang sedang diproses"}.</td></tr>`;
   }
 
   function renderProducts() {
@@ -321,14 +328,14 @@
 
   function showOrder(order) {
     el("order-modal-title").textContent = order.orderNumber;
-    el("order-detail").innerHTML = `<div class="order-info"><div><span>Nama pemesan</span><strong>${escapeHtml(order.customerName)}</strong></div><div><span>Asal PoP</span><strong>${escapeHtml(order.popName)}</strong></div><div><span>WhatsApp</span><strong>${escapeHtml(order.whatsapp)}</strong></div><div><span>Tanggal order</span><strong>${escapeHtml(dateTime(order.createdAt))}</strong></div>${order.note ? `<div class="order-note"><span>Catatan</span><strong>${escapeHtml(order.note)}</strong></div>` : ""}</div>
+    el("order-detail").innerHTML = `<div class="order-info"><div><span>Nama pemesan</span><strong>${escapeHtml(order.customerName)}</strong></div><div><span>Asal PoP</span><strong>${escapeHtml(order.popName)}</strong></div><div><span>WhatsApp</span><strong>${escapeHtml(order.whatsapp)}</strong></div><div><span>Tanggal order</span><strong>${escapeHtml(dateTime(order.createdAt))}</strong></div><div><span>Status</span><strong>${order.status === "DONE" ? "Selesai" : "On proses"}</strong></div>${order.completedAt ? `<div><span>Selesai pada</span><strong>${escapeHtml(dateTime(order.completedAt))}</strong></div>` : ""}${order.note ? `<div class="order-note"><span>Catatan</span><strong>${escapeHtml(order.note)}</strong></div>` : ""}</div>
       <div>${order.items.map((item) => `<div class="order-item-detail">${visual(item, true)}<div><strong>${escapeHtml(item.productName)}</strong><small>${item.variant ? `${escapeHtml(item.variantLabel || "Ukuran")}: ${escapeHtml(item.variant)}` : "Tanpa ukuran"} · ${item.quantity} pcs × ${rupiah(item.unitPrice)}</small></div><b>${rupiah(item.subtotal)}</b></div>`).join("")}</div>
-      <div class="order-total-detail"><span>Total nominal</span><strong>${rupiah(order.total)}</strong></div><div class="modal-actions"><button class="button danger" type="button" data-delete-order="${escapeHtml(order.orderNumber)}">Hapus pesanan</button><a class="button primary order-download" href="/api/orders/${encodeURIComponent(order.orderNumber)}/pdf">↓ Download PDF</a></div>`;
+      <div class="order-total-detail"><span>Total nominal</span><strong>${rupiah(order.total)}</strong></div><div class="modal-actions">${order.status === "DONE" ? `<button class="button secondary" type="button" data-order-status-change="PROCESSING" data-order-number="${escapeHtml(order.orderNumber)}">Buka kembali</button>` : `<button class="button primary" type="button" data-order-status-change="DONE" data-order-number="${escapeHtml(order.orderNumber)}">✓ Tandai selesai</button>`}<button class="button danger" type="button" data-delete-order="${escapeHtml(order.orderNumber)}">Hapus pesanan</button><a class="button primary order-download" href="/api/orders/${encodeURIComponent(order.orderNumber)}/pdf">↓ Download PDF</a></div>`;
     el("order-modal").classList.remove("hidden");
   }
 
   function exportCsv() {
-    const rows = [["Nomor Order", "Tanggal", "Nama", "WhatsApp", "PoP", "Catatan", "Barang", "Total"], ...state.orders.map((order) => [order.orderNumber, dateTime(order.createdAt), order.customerName, order.whatsapp, order.popName, order.note, order.items.map((item) => `${item.productName}${item.variant ? ` (${item.variantLabel}: ${item.variant})` : ""} x${item.quantity}`).join("; "), order.total])];
+    const rows = [["Nomor Order", "Tanggal", "Nama", "WhatsApp", "PoP", "Catatan", "Barang", "Total", "Status", "Selesai pada"], ...state.orders.map((order) => [order.orderNumber, dateTime(order.createdAt), order.customerName, order.whatsapp, order.popName, order.note, order.items.map((item) => `${item.productName}${item.variant ? ` (${item.variantLabel}: ${item.variant})` : ""} x${item.quantity}`).join("; "), order.total, order.status === "DONE" ? "Selesai" : "On proses", order.completedAt ? dateTime(order.completedAt) : ""])];
     const csv = rows.map((row) => row.map((cell) => `"${String(cell || "").replaceAll('"', '""')}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = `rekap-order-merchandise-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
@@ -368,7 +375,25 @@
   document.querySelector(".sidebar nav").addEventListener("click", (event) => { const button = event.target.closest("[data-tab]"); if (button) switchTab(button.dataset.tab); });
   document.querySelector(".settings-subnav").addEventListener("click", (event) => { const button = event.target.closest("[data-settings-section]"); if (button) switchSettingsSection(button.dataset.settingsSection); });
   el("order-search").addEventListener("input", renderOrders);
+  document.querySelector(".order-status-tabs").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-order-status]");
+    if (!button) return;
+    state.orderStatus = button.dataset.orderStatus;
+    renderOrders();
+  });
   el("export-orders").addEventListener("click", exportCsv);
+  async function changeOrderStatus(orderNumber, status) {
+    const order = state.orders.find((item) => item.orderNumber === orderNumber);
+    const label = status === "DONE" ? "menyelesaikan" : "membuka kembali";
+    if (!order || !confirm(`Yakin ingin ${label} pesanan ${orderNumber}?`)) return;
+    try {
+      const data = await api(`/api/admin/orders/${encodeURIComponent(orderNumber)}/status`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+      state.orders = state.orders.map((item) => item.orderNumber === orderNumber ? data.order : item);
+      closeModal("order-modal");
+      message(status === "DONE" ? `Pesanan ${orderNumber} dipindahkan ke tab Selesai.` : `Pesanan ${orderNumber} dikembalikan ke tab On proses.`);
+      renderOrders();
+    } catch (error) { message(error.message, "error"); }
+  }
   async function removeOrder(orderNumber) {
     const order = state.orders.find((item) => item.orderNumber === orderNumber);
     if (!order || !confirm(`Hapus pesanan ${orderNumber} atas nama ${order.customerName}? Data yang dihapus tidak dapat dikembalikan kecuali melalui backup.`)) return;
@@ -380,12 +405,19 @@
     } catch (error) { message(error.message, "error"); }
   }
   el("orders-body").addEventListener("click", (event) => {
+    const status = event.target.closest("[data-order-status-change]");
+    if (status) return changeOrderStatus(status.dataset.orderNumber, status.dataset.orderStatusChange);
     const remove = event.target.closest("[data-delete-order]");
     if (remove) return removeOrder(remove.dataset.deleteOrder);
     const button = event.target.closest("[data-order]");
     if (button) showOrder(state.orders.find((order) => order.orderNumber === button.dataset.order));
   });
-  el("order-detail").addEventListener("click", (event) => { const button = event.target.closest("[data-delete-order]"); if (button) removeOrder(button.dataset.deleteOrder); });
+  el("order-detail").addEventListener("click", (event) => {
+    const status = event.target.closest("[data-order-status-change]");
+    if (status) return changeOrderStatus(status.dataset.orderNumber, status.dataset.orderStatusChange);
+    const button = event.target.closest("[data-delete-order]");
+    if (button) removeOrder(button.dataset.deleteOrder);
+  });
   el("add-product").addEventListener("click", () => openProduct());
   el("admin-products").addEventListener("click", async (event) => {
     const edit = event.target.closest("[data-edit-product]");

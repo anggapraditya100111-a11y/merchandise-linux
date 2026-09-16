@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0 — 2026-09-16
+
+- Pertahankan baris baru pada deskripsi produk agar daftar dengan strip tetap tersusun vertikal di katalog.
+- Tambahkan status pesanan **On proses** dan **Selesai** beserta waktu penyelesaian.
+- Pisahkan daftar admin menjadi tab On proses dan Selesai dengan jumlah order pada masing-masing tab.
+- Tambahkan tombol Tandai selesai serta Buka kembali pada daftar dan detail pesanan.
+- Tambahkan status dan waktu selesai pada rekap CSV.
+- Migrasikan seluruh pesanan versi lama secara aman ke status On proses dan pertahankan status dalam backup/restore.
+
 ## 1.3.2 — 2026-09-12
 
 - Pertahankan hubungan aman antara halaman admin Katalog dan popup AXINDO Access dengan `same-origin-allow-popups`.

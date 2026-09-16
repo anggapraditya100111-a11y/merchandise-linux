@@ -10,7 +10,7 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 - Pilihan ukuran baju, nomor sepatu, atau varian lain langsung pada setiap barang.
 - Popup setelah order berhasil dengan pesan konfirmasi, nomor order otomatis, tombol PDF, dan tombol WhatsApp admin.
 - Download PDF order lengkap dengan gambar barang, ukuran/nomor, jumlah, harga, dan total nominal.
-- Panel admin untuk pesanan (termasuk hapus), barang, galeri maksimal 5 foto, varian, kategori, dan daftar PoP.
+- Panel admin untuk pesanan, status On proses/Selesai, barang, galeri maksimal 5 foto, varian, kategori, dan daftar PoP.
 - Foto barang ditambahkan satu per satu sebagai thumbnail dan dapat disusun ulang dengan drag-and-drop.
 - Pengaturan nama aplikasi, teks header katalog, nama perusahaan, logo, warna, WhatsApp admin pusat, serta domain publik.
 - Slider gambar dan popup galeri besar dengan navigasi foto untuk setiap produk di katalog.
@@ -18,7 +18,7 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 - Ubah password admin lokal dengan tombol mata; akun yang masuk melalui AXINDO ID mengelola password di AXINDO Access.
 - Panel admin dapat masuk melalui AXINDO ID; login lokal tetap tersedia sebagai akses darurat.
 - Manifest role untuk Web Akses: Super Admin serta Pegawai/Pemesan.
-- Rekap order CSV; tidak ada status pesanan.
+- Pesanan selesai dipindahkan ke tab tersendiri, dapat dibuka kembali, dihapus, dan diekspor ke CSV beserta statusnya.
 - Backup/restore lengkap untuk database SQLite dan seluruh gambar.
 - Mendukung `amd64` dan `arm64` melalui Docker.
 
@@ -190,15 +190,15 @@ docker compose config --quiet
 docker build -t ainet-merchandise:test .
 ```
 
-Test otomatis memeriksa katalog, kategori, galeri lima foto dan urutannya, pengaturan identitas/domain/WhatsApp, catatan order, PDF, pengalihan WhatsApp, login reverse proxy, ubah password, hapus order, backup, restore, dan perlindungan path paket backup.
+Test otomatis memeriksa katalog, deskripsi multiline, kategori, galeri lima foto dan urutannya, pengaturan identitas/domain/WhatsApp, status order, PDF, pengalihan WhatsApp, login reverse proxy, ubah password, hapus order, backup, restore, dan perlindungan path paket backup.
 
 ## Rilis image
 
 Push tag versi untuk membangun image multi-arsitektur melalui GitHub Actions:
 
 ```bash
-git tag v1.3.2
-git push origin v1.3.2
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
 Workflow menerbitkan `ghcr.io/anggapraditya100111-a11y/ainet-merchandise:latest`. Pastikan package GHCR diatur menjadi **Public** sebelum menggunakan `docker-compose.casaos.yml`.

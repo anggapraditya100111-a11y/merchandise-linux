@@ -364,6 +364,16 @@ app.delete("/api/admin/session", auth.rejectCrossSite, (_req, res) => {
 });
 
 app.get("/api/admin/orders", auth.requireAdmin, (_req, res) => res.json({ orders: db.listOrders() }));
+app.patch("/api/admin/orders/:number/status", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try {
+    const status = String(req.body?.status || "").toUpperCase();
+    const order = db.updateOrderStatus(req.params.number, status);
+    if (!order) return res.status(404).json({ error: "Pesanan tidak ditemukan." });
+    res.json({ order });
+  } catch (error) {
+    errorResponse(res, error, "Status pesanan gagal diperbarui.");
+  }
+});
 app.delete("/api/admin/orders/:number", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
   if (!db.deleteOrder(req.params.number)) return res.status(404).json({ error: "Pesanan tidak ditemukan." });
   res.status(204).end();

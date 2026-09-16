@@ -118,6 +118,8 @@ function initDatabase() {
       note TEXT NOT NULL DEFAULT '',
       total INTEGER NOT NULL,
       pdf_token TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PROCESSING' CHECK(status IN ('PROCESSING', 'DONE')),
+      completed_at TEXT,
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS order_items (
@@ -140,6 +142,9 @@ function initDatabase() {
 
   const orderColumns = new Set(db.prepare("PRAGMA table_info(orders)").all().map((column) => column.name));
   if (!orderColumns.has("note")) db.exec("ALTER TABLE orders ADD COLUMN note TEXT NOT NULL DEFAULT ''");
+  if (!orderColumns.has("status")) db.exec("ALTER TABLE orders ADD COLUMN status TEXT NOT NULL DEFAULT 'PROCESSING'");
+  if (!orderColumns.has("completed_at")) db.exec("ALTER TABLE orders ADD COLUMN completed_at TEXT");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_orders_status_created_at ON orders(status, created_at DESC)");
 
   const timestamp = nowIso();
   const adminCount = db.prepare("SELECT COUNT(*) AS total FROM admins").get().total;
@@ -489,8 +494,8 @@ function createOrder(input) {
     const total = items.reduce((sum, item) => sum + item.subtotal, 0);
     const createdAt = nowIso();
     db.prepare(`
-      INSERT INTO orders (id, order_number, customer_name, pop_id, pop_name, whatsapp, note, total, pdf_token, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO orders (id, order_number, customer_name, pop_id, pop_name, whatsapp, note, total, pdf_token, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PROCESSING', ?)
     `).run(orderId, orderNumber, input.customerName, pop.id, pop.name, input.whatsapp, input.note || "", total, pdfToken, createdAt);
     const insertItem = db.prepare(`
       INSERT INTO order_items
@@ -535,6 +540,8 @@ function orderRow(row, includeToken = false) {
     whatsapp: row.whatsapp,
     note: row.note || "",
     total: Number(row.total),
+    status: row.status === "DONE" ? "DONE" : "PROCESSING",
+    completedAt: row.completed_at || null,
     createdAt: row.created_at,
     items: orderItems(row.id),
   };
@@ -553,6 +560,14 @@ function listOrders() {
 
 function deleteOrder(orderNumber) {
   return getDatabase().prepare("DELETE FROM orders WHERE order_number = ?").run(orderNumber).changes > 0;
+}
+
+function updateOrderStatus(orderNumber, status) {
+  if (!["PROCESSING", "DONE"].includes(status)) throw new Error("Status pesanan tidak valid.");
+  const completedAt = status === "DONE" ? nowIso() : null;
+  const result = getDatabase().prepare("UPDATE orders SET status = ?, completed_at = ? WHERE order_number = ?")
+    .run(status, completedAt, orderNumber);
+  return result.changes ? getOrderByNumber(orderNumber) : null;
 }
 
 function verifyPdfToken(orderNumber, token) {
@@ -604,6 +619,7 @@ module.exports = {
   getOrderByNumber,
   listOrders,
   deleteOrder,
+  updateOrderStatus,
   verifyPdfToken,
   findAdmin,
   updateAdminPassword,

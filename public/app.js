@@ -93,7 +93,7 @@
       const options = product.variants.map((variant) => `<option${variant === selected ? " selected" : ""}>${escapeHtml(variant)}</option>`).join("");
       return `<article class="product-card">
         ${productGallery(product)}
-        <div class="product-copy"><span class="product-category">${escapeHtml(product.category)}</span><h3>${escapeHtml(product.name)}</h3><p>${escapeHtml(product.description)}</p><strong>${rupiah(product.price)}</strong></div>
+        <div class="product-copy"><span class="product-category">${escapeHtml(product.category)}</span><h3>${escapeHtml(product.name)}</h3><p class="product-description">${escapeHtml(product.description)}</p><strong>${rupiah(product.price)}</strong></div>
         <div class="product-controls">
           ${product.variants.length ? `<label><span>${escapeHtml(product.variantLabel || "Ukuran/varian")}</span><select data-variant="${product.id}">${options}</select></label>` : `<span class="muted">Tanpa ukuran</span>`}
           <button type="button" class="button primary" data-add="${product.id}">+ Tambah</button>

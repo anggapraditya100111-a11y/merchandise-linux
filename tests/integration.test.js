@@ -27,7 +27,7 @@ test("path restore menolak traversal dan path absolut", () => {
   assert.equal(safeEntryPath(root, "uploads/product.jpg"), path.join(root, "uploads/product.jpg"));
 });
 
-test("migrasi database lama menambahkan galeri, kategori, pengaturan, dan catatan", { timeout: 15_000 }, async (context) => {
+test("migrasi database lama menambahkan galeri, kategori, pengaturan, catatan, dan status pesanan", { timeout: 15_000 }, async (context) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "ainet-merch-migration-"));
   const dataDir = path.join(root, "data");
   const uploadDir = path.join(root, "uploads");
@@ -50,6 +50,7 @@ test("migrasi database lama menambahkan galeri, kategori, pengaturan, dan catata
       pdf_token TEXT NOT NULL, created_at TEXT NOT NULL
     );
     INSERT INTO products VALUES ('prd_legacy', 'LEGACY-001', 'Barang Lama', 'Data sebelum update', 'Kategori Lama', 10000, NULL, '[]', 'legacy.png', 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+    INSERT INTO orders VALUES ('ord_legacy', 'MER-20260101-0001', 'Pemesan Lama', NULL, 'PoP Lama', '628123456789', 10000, 'legacy-token', '2026-01-01T00:00:00.000Z');
   `);
   legacy.close();
 
@@ -84,6 +85,9 @@ test("migrasi database lama menambahkan galeri, kategori, pengaturan, dan catata
 
   const migrated = new DatabaseSync(dbPath, { readOnly: true });
   assert.ok(migrated.prepare("PRAGMA table_info(orders)").all().some((column) => column.name === "note"));
+  assert.ok(migrated.prepare("PRAGMA table_info(orders)").all().some((column) => column.name === "status"));
+  assert.ok(migrated.prepare("PRAGMA table_info(orders)").all().some((column) => column.name === "completed_at"));
+  assert.deepEqual({ ...migrated.prepare("SELECT status, completed_at FROM orders WHERE id = 'ord_legacy'").get() }, { status: "PROCESSING", completed_at: null });
   assert.equal(migrated.prepare("SELECT COUNT(*) AS total FROM categories WHERE name = 'Kategori Lama'").get().total, 1);
   assert.equal(migrated.prepare("SELECT COUNT(*) AS total FROM product_images WHERE product_id = 'prd_legacy'").get().total, 1);
   migrated.close();
@@ -163,6 +167,8 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   assert.equal(orderData.order.items[0].variant, shirt.variants[0]);
   assert.equal(orderData.order.total, shirt.price * 2);
   assert.equal(orderData.order.note, "Mohon dikirim bersama perlengkapan PoP.");
+  assert.equal(orderData.order.status, "PROCESSING");
+  assert.equal(orderData.order.completedAt, null);
   assert.match(orderData.message, /konfirmasi ke admin/i);
   assert.match(orderData.publicPdfUrl, /^https:\/\/katalog\.axindo\.my\.id\/api\/orders\//);
   assert.equal(orderData.whatsappUrl, null);
@@ -324,6 +330,23 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   assert.equal(adminOrdersResponse.status, 200);
   assert.equal((await adminOrdersResponse.json()).orders.length, 2);
 
+  const invalidStatusResponse = await fetch(`${base}/api/admin/orders/${encodeURIComponent(whatsappOrder.order.orderNumber)}/status`, {
+    method: "PATCH",
+    headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ status: "UNKNOWN" }),
+  });
+  assert.equal(invalidStatusResponse.status, 400);
+
+  const completeOrderResponse = await fetch(`${base}/api/admin/orders/${encodeURIComponent(whatsappOrder.order.orderNumber)}/status`, {
+    method: "PATCH",
+    headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ status: "DONE" }),
+  });
+  assert.equal(completeOrderResponse.status, 200);
+  const completedOrder = (await completeOrderResponse.json()).order;
+  assert.equal(completedOrder.status, "DONE");
+  assert.ok(completedOrder.completedAt);
+
   const backupResponse = await fetch(`${base}/api/admin/backup`, { method: "POST", headers: { cookie, "sec-fetch-site": "same-origin" } });
   assert.equal(backupResponse.status, 200);
   const backup = await backupResponse.blob();
@@ -335,7 +358,9 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   assert.equal(restoreResponse.status, 200, await restoreResponse.text());
   const ordersAfterRestore = await fetch(`${base}/api/admin/orders`, { headers: { cookie } });
   assert.equal(ordersAfterRestore.status, 200);
-  assert.equal((await ordersAfterRestore.json()).orders.length, 2);
+  const restoredOrders = (await ordersAfterRestore.json()).orders;
+  assert.equal(restoredOrders.length, 2);
+  assert.equal(restoredOrders.find((order) => order.orderNumber === whatsappOrder.order.orderNumber).status, "DONE");
 
   const invalidPasswordResponse = await fetch(`${base}/api/admin/password`, {
     method: "POST", headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },

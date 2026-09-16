@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102039">
   <title>Admin · AINET Merchandise</title>
-  <link rel="stylesheet" href="/styles.css?v=1.3.2">
-  <link rel="stylesheet" href="/theme.css?v=1.3.2">
-  <script src="/admin.js?v=1.3.2" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=1.4.0">
+  <link rel="stylesheet" href="/theme.css?v=1.4.0">
+  <script src="/admin.js?v=1.4.0" defer></script>
 </head>
 <body class="admin-body">
   <main id="login-view" class="login-shell">
@@ -54,8 +54,9 @@
           <article><span>Pesanan hari ini</span><strong id="metric-today">0</strong></article>
           <article><span>Nominal bulan ini</span><strong id="metric-month">Rp0</strong></article>
         </div>
+        <div class="order-status-tabs" role="tablist" aria-label="Status pesanan"><button class="active" type="button" role="tab" aria-selected="true" data-order-status="PROCESSING">On proses <span id="processing-count">0</span></button><button type="button" role="tab" aria-selected="false" data-order-status="DONE">Selesai <span id="done-count">0</span></button></div>
         <div class="admin-toolbar"><label class="search"><input id="order-search" type="search" placeholder="Cari nomor order, nama, PoP, WA…"></label><button id="export-orders" class="button secondary">↓ Unduh rekap CSV</button></div>
-        <div class="table-wrap"><table><thead><tr><th>No. order</th><th>Tanggal</th><th>Pemesan</th><th>PoP</th><th>Barang</th><th>Total</th><th></th></tr></thead><tbody id="orders-body"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>No. order</th><th>Tanggal</th><th>Pemesan</th><th>PoP</th><th>Barang</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="orders-body"></tbody></table></div>
       </section>
 
       <section id="products-tab" class="tab-panel hidden">
