@@ -9,7 +9,7 @@ const { rateLimit } = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const db = require("./db");
 const auth = require("./auth");
-const { renderOrderPdf } = require("./pdf");
+const { renderOrderPdf, renderWorkOrderPdf } = require("./pdf");
 const { createFullBackup, restoreFullBackup } = require("./backup");
 
 const ROOT = path.join(__dirname, "..");
@@ -375,8 +375,47 @@ app.patch("/api/admin/orders/:number/status", auth.requireAdmin, auth.rejectCros
   }
 });
 app.delete("/api/admin/orders/:number", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
-  if (!db.deleteOrder(req.params.number)) return res.status(404).json({ error: "Pesanan tidak ditemukan." });
-  res.status(204).end();
+  try {
+    if (!db.deleteOrder(req.params.number)) return res.status(404).json({ error: "Pesanan tidak ditemukan." });
+    res.status(204).end();
+  } catch (error) {
+    errorResponse(res, error, "Pesanan gagal dihapus.");
+  }
+});
+app.get("/api/admin/work-orders", auth.requireAdmin, (_req, res) => res.json({ workOrders: db.listWorkOrders() }));
+app.post("/api/admin/work-orders", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try {
+    const vendorName = text(req.body?.vendorName, 2, 120, "Nama vendor");
+    const note = String(req.body?.note || "").trim();
+    if (note.length > 500) throw new Error("Catatan Work Order maksimal 500 karakter.");
+    const orderNumbers = Array.isArray(req.body?.orderNumbers) ? req.body.orderNumbers : [];
+    res.status(201).json({ workOrder: db.createWorkOrder({ vendorName, note, orderNumbers }) });
+  } catch (error) {
+    errorResponse(res, error, "Work Order gagal dibuat.");
+  }
+});
+app.patch("/api/admin/work-orders/:number/status", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try {
+    const status = String(req.body?.status || "").toUpperCase();
+    const workOrder = db.updateWorkOrderStatus(req.params.number, status);
+    if (!workOrder) return res.status(404).json({ error: "Work Order tidak ditemukan." });
+    res.json({ workOrder });
+  } catch (error) {
+    errorResponse(res, error, "Status Work Order gagal diperbarui.");
+  }
+});
+app.delete("/api/admin/work-orders/:number", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try {
+    if (!db.deleteWorkOrder(req.params.number)) return res.status(404).json({ error: "Work Order tidak ditemukan." });
+    res.status(204).end();
+  } catch (error) {
+    errorResponse(res, error, "Work Order gagal dibatalkan.");
+  }
+});
+app.get("/api/admin/work-orders/:number/pdf", auth.requireAdmin, (req, res) => {
+  const workOrder = db.getWorkOrderByNumber(req.params.number);
+  if (!workOrder) return res.status(404).json({ error: "Work Order tidak ditemukan." });
+  renderWorkOrderPdf(res, workOrder, db.getSettings());
 });
 app.get("/api/admin/products", auth.requireAdmin, (_req, res) => res.json({ products: db.listProducts() }));
 app.get("/api/admin/pops", auth.requireAdmin, (_req, res) => res.json({ pops: db.listPops() }));

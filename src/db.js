@@ -135,9 +135,39 @@ function initDatabase() {
       quantity INTEGER NOT NULL,
       subtotal INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS work_order_sequence (
+      day TEXT PRIMARY KEY,
+      last_number INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS work_orders (
+      id TEXT PRIMARY KEY,
+      work_order_number TEXT NOT NULL UNIQUE,
+      vendor_name TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'VENDOR_PROCESSING' CHECK(status IN ('VENDOR_PROCESSING', 'DONE')),
+      created_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS work_order_orders (
+      work_order_id TEXT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+      order_id TEXT NOT NULL UNIQUE REFERENCES orders(id) ON DELETE RESTRICT,
+      PRIMARY KEY (work_order_id, order_id)
+    );
+    CREATE TABLE IF NOT EXISTS work_order_items (
+      id TEXT PRIMARY KEY,
+      work_order_id TEXT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
+      product_id TEXT,
+      sku TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      variant_label TEXT,
+      variant_value TEXT,
+      quantity INTEGER NOT NULL CHECK(quantity > 0)
+    );
     CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
     CREATE INDEX IF NOT EXISTS idx_product_images_product_id ON product_images(product_id, position);
+    CREATE INDEX IF NOT EXISTS idx_work_orders_created_at ON work_orders(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_work_order_items_work_order_id ON work_order_items(work_order_id);
   `);
 
   const orderColumns = new Set(db.prepare("PRAGMA table_info(orders)").all().map((column) => column.name));
@@ -531,6 +561,12 @@ function orderItems(orderId) {
 }
 
 function orderRow(row, includeToken = false) {
+  const linkedWorkOrder = getDatabase().prepare(`
+    SELECT work_orders.work_order_number, work_orders.status
+    FROM work_order_orders
+    JOIN work_orders ON work_orders.id = work_order_orders.work_order_id
+    WHERE work_order_orders.order_id = ?
+  `).get(row.id);
   const result = {
     id: row.id,
     orderNumber: row.order_number,
@@ -542,6 +578,10 @@ function orderRow(row, includeToken = false) {
     total: Number(row.total),
     status: row.status === "DONE" ? "DONE" : "PROCESSING",
     completedAt: row.completed_at || null,
+    workOrder: linkedWorkOrder ? {
+      workOrderNumber: linkedWorkOrder.work_order_number,
+      status: linkedWorkOrder.status,
+    } : null,
     createdAt: row.created_at,
     items: orderItems(row.id),
   };
@@ -559,15 +599,172 @@ function listOrders() {
 }
 
 function deleteOrder(orderNumber) {
-  return getDatabase().prepare("DELETE FROM orders WHERE order_number = ?").run(orderNumber).changes > 0;
+  const db = getDatabase();
+  const order = db.prepare("SELECT id FROM orders WHERE order_number = ?").get(orderNumber);
+  if (!order) return false;
+  const linked = db.prepare("SELECT 1 AS linked FROM work_order_orders WHERE order_id = ?").get(order.id);
+  if (linked) throw new Error("Pesanan sudah masuk Work Order. Batalkan Work Order terlebih dahulu sebelum menghapus pesanan.");
+  return db.prepare("DELETE FROM orders WHERE id = ?").run(order.id).changes > 0;
 }
 
 function updateOrderStatus(orderNumber, status) {
   if (!["PROCESSING", "DONE"].includes(status)) throw new Error("Status pesanan tidak valid.");
+  const db = getDatabase();
+  const order = db.prepare("SELECT id FROM orders WHERE order_number = ?").get(orderNumber);
+  if (!order) return null;
+  const linked = db.prepare("SELECT 1 AS linked FROM work_order_orders WHERE order_id = ?").get(order.id);
+  if (linked) throw new Error("Status pesanan yang masuk Work Order harus diubah melalui menu Work Order.");
   const completedAt = status === "DONE" ? nowIso() : null;
-  const result = getDatabase().prepare("UPDATE orders SET status = ?, completed_at = ? WHERE order_number = ?")
+  const result = db.prepare("UPDATE orders SET status = ?, completed_at = ? WHERE order_number = ?")
     .run(status, completedAt, orderNumber);
   return result.changes ? getOrderByNumber(orderNumber) : null;
+}
+
+function workOrderItems(workOrderId) {
+  return getDatabase().prepare(`
+    SELECT * FROM work_order_items WHERE work_order_id = ?
+    ORDER BY product_name COLLATE NOCASE, variant_value COLLATE NOCASE
+  `).all(workOrderId).map((row) => ({
+    id: row.id,
+    productId: row.product_id,
+    sku: row.sku,
+    productName: row.product_name,
+    variantLabel: row.variant_label || null,
+    variant: row.variant_value || null,
+    quantity: Number(row.quantity),
+  }));
+}
+
+function workOrderOrders(workOrderId) {
+  return getDatabase().prepare(`
+    SELECT orders.* FROM work_order_orders
+    JOIN orders ON orders.id = work_order_orders.order_id
+    WHERE work_order_orders.work_order_id = ?
+    ORDER BY orders.created_at, orders.order_number
+  `).all(workOrderId).map((row) => ({
+    orderNumber: row.order_number,
+    customerName: row.customer_name,
+    popName: row.pop_name,
+    status: row.status === "DONE" ? "DONE" : "PROCESSING",
+    createdAt: row.created_at,
+  }));
+}
+
+function workOrderRow(row) {
+  return {
+    id: row.id,
+    workOrderNumber: row.work_order_number,
+    vendorName: row.vendor_name,
+    note: row.note || "",
+    status: row.status === "DONE" ? "DONE" : "VENDOR_PROCESSING",
+    createdAt: row.created_at,
+    completedAt: row.completed_at || null,
+    orders: workOrderOrders(row.id),
+    items: workOrderItems(row.id),
+  };
+}
+
+function getWorkOrderByNumber(workOrderNumber) {
+  const row = getDatabase().prepare("SELECT * FROM work_orders WHERE work_order_number = ?").get(workOrderNumber);
+  return row ? workOrderRow(row) : null;
+}
+
+function listWorkOrders() {
+  return getDatabase().prepare("SELECT * FROM work_orders ORDER BY created_at DESC").all().map(workOrderRow);
+}
+
+function createWorkOrder(input) {
+  const db = getDatabase();
+  const orderNumbers = Array.from(new Set((input.orderNumbers || []).map((value) => String(value).trim()).filter(Boolean)));
+  if (!orderNumbers.length) throw new Error("Pilih minimal satu pesanan untuk membuat Work Order.");
+  if (orderNumbers.length > 100) throw new Error("Satu Work Order maksimal berisi 100 pesanan.");
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const placeholders = orderNumbers.map(() => "?").join(", ");
+    const orders = db.prepare(`SELECT * FROM orders WHERE order_number IN (${placeholders})`).all(...orderNumbers);
+    if (orders.length !== orderNumbers.length) throw new Error("Salah satu pesanan tidak ditemukan.");
+    if (orders.some((order) => order.status !== "PROCESSING")) throw new Error("Hanya pesanan On proses yang dapat dimasukkan ke Work Order.");
+    const orderIds = orders.map((order) => order.id);
+    const idPlaceholders = orderIds.map(() => "?").join(", ");
+    const linked = db.prepare(`
+      SELECT orders.order_number, work_orders.work_order_number
+      FROM work_order_orders
+      JOIN orders ON orders.id = work_order_orders.order_id
+      JOIN work_orders ON work_orders.id = work_order_orders.work_order_id
+      WHERE work_order_orders.order_id IN (${idPlaceholders})
+    `).all(...orderIds);
+    if (linked.length) throw new Error(`Pesanan ${linked[0].order_number} sudah masuk Work Order ${linked[0].work_order_number}.`);
+
+    const day = jakartaDay();
+    db.prepare(`
+      INSERT INTO work_order_sequence (day, last_number) VALUES (?, 1)
+      ON CONFLICT(day) DO UPDATE SET last_number = last_number + 1
+    `).run(day);
+    const sequence = db.prepare("SELECT last_number FROM work_order_sequence WHERE day = ?").get(day).last_number;
+    const workOrderNumber = `WO-${day}-${String(sequence).padStart(4, "0")}`;
+    const workOrderId = id("wor");
+    const createdAt = nowIso();
+    db.prepare(`
+      INSERT INTO work_orders (id, work_order_number, vendor_name, note, status, created_at)
+      VALUES (?, ?, ?, ?, 'VENDOR_PROCESSING', ?)
+    `).run(workOrderId, workOrderNumber, input.vendorName, input.note || "", createdAt);
+    const linkOrder = db.prepare("INSERT INTO work_order_orders (work_order_id, order_id) VALUES (?, ?)");
+    for (const orderId of orderIds) linkOrder.run(workOrderId, orderId);
+
+    const aggregatedItems = db.prepare(`
+      SELECT product_id, sku, product_name, variant_label, variant_value, SUM(quantity) AS quantity
+      FROM order_items
+      WHERE order_id IN (${idPlaceholders})
+      GROUP BY COALESCE(product_id, ''), sku, product_name, COALESCE(variant_label, ''), COALESCE(variant_value, '')
+      ORDER BY product_name COLLATE NOCASE, variant_value COLLATE NOCASE
+    `).all(...orderIds);
+    const insertItem = db.prepare(`
+      INSERT INTO work_order_items
+        (id, work_order_id, product_id, sku, product_name, variant_label, variant_value, quantity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const item of aggregatedItems) {
+      insertItem.run(id("woi"), workOrderId, item.product_id, item.sku, item.product_name,
+        item.variant_label, item.variant_value, Number(item.quantity));
+    }
+    db.exec("COMMIT");
+    return getWorkOrderByNumber(workOrderNumber);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function updateWorkOrderStatus(workOrderNumber, status) {
+  if (!["VENDOR_PROCESSING", "DONE"].includes(status)) throw new Error("Status Work Order tidak valid.");
+  const db = getDatabase();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const workOrder = db.prepare("SELECT id FROM work_orders WHERE work_order_number = ?").get(workOrderNumber);
+    if (!workOrder) {
+      db.exec("ROLLBACK");
+      return null;
+    }
+    const completedAt = status === "DONE" ? nowIso() : null;
+    db.prepare("UPDATE work_orders SET status = ?, completed_at = ? WHERE id = ?").run(status, completedAt, workOrder.id);
+    db.prepare(`
+      UPDATE orders SET status = ?, completed_at = ?
+      WHERE id IN (SELECT order_id FROM work_order_orders WHERE work_order_id = ?)
+    `).run(status === "DONE" ? "DONE" : "PROCESSING", completedAt, workOrder.id);
+    db.exec("COMMIT");
+    return getWorkOrderByNumber(workOrderNumber);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function deleteWorkOrder(workOrderNumber) {
+  const db = getDatabase();
+  const workOrder = db.prepare("SELECT id, status FROM work_orders WHERE work_order_number = ?").get(workOrderNumber);
+  if (!workOrder) return false;
+  if (workOrder.status === "DONE") throw new Error("Work Order selesai tidak dapat dibatalkan. Buka kembali Work Order terlebih dahulu.");
+  return db.prepare("DELETE FROM work_orders WHERE id = ?").run(workOrder.id).changes > 0;
 }
 
 function verifyPdfToken(orderNumber, token) {
@@ -620,6 +817,11 @@ module.exports = {
   listOrders,
   deleteOrder,
   updateOrderStatus,
+  listWorkOrders,
+  getWorkOrderByNumber,
+  createWorkOrder,
+  updateWorkOrderStatus,
+  deleteWorkOrder,
   verifyPdfToken,
   findAdmin,
   updateAdminPassword,

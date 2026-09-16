@@ -105,4 +105,91 @@ function renderOrderPdf(res, order, settings) {
   doc.end();
 }
 
-module.exports = { renderOrderPdf };
+function renderWorkOrderPdf(res, workOrder, settings) {
+  const doc = new PDFDocument({ size: "A4", margin: 42, info: { Title: `Work Order ${workOrder.workOrderNumber}` } });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="work-order-${workOrder.workOrderNumber}.pdf"`);
+  doc.pipe(res);
+
+  const primaryColor = settings.primaryColor || "#0a3f8d";
+  doc.rect(0, 0, 595.28, 126).fill(primaryColor);
+  const logoPath = safeImage(settings.logoFilename);
+  let brandX = 42;
+  if (logoPath) {
+    try {
+      doc.image(logoPath, 42, 31, { fit: [52, 52], align: "center", valign: "center" });
+      brandX = 108;
+    } catch {}
+  }
+  doc.fillColor("#ffffff").fontSize(20).font("Helvetica-Bold").text(settings.companyName, brandX, 38, { width: 265 });
+  doc.fontSize(9).font("Helvetica").fillColor("#c9dbf5").text(String(settings.appName || "AXINDO Merchandise").toUpperCase(), brandX, 67, { width: 265, characterSpacing: 1 });
+  doc.fontSize(10).fillColor("#ffffff").text("WORK ORDER VENDOR", 360, 41, { width: 193, align: "right" });
+  doc.fontSize(16).font("Helvetica-Bold").text(workOrder.workOrderNumber, 330, 64, { width: 223, align: "right" });
+
+  const details = [
+    ["Vendor", workOrder.vendorName],
+    ["Tanggal dibuat", dateTime(workOrder.createdAt)],
+    ["Status", workOrder.status === "DONE" ? "Selesai" : "Diproses vendor"],
+    ["Referensi order", workOrder.orders.map((order) => order.orderNumber).join(", ")],
+  ];
+  let y = 151;
+  for (const [label, value] of details) {
+    doc.font("Helvetica").fontSize(9).fillColor("#657289").text(label, 42, y, { width: 100 });
+    doc.font("Helvetica-Bold").fillColor("#102039").text(String(value), 145, y, { width: 408 });
+    y += Math.max(20, doc.heightOfString(String(value), { width: 408 }) + 7);
+  }
+  if (workOrder.note) {
+    doc.font("Helvetica").fontSize(9).fillColor("#657289").text("Catatan", 42, y, { width: 100 });
+    doc.font("Helvetica").fillColor("#102039").text(workOrder.note, 145, y, { width: 408 });
+    y += Math.max(24, doc.heightOfString(workOrder.note, { width: 408 }) + 9);
+  }
+
+  const columns = { no: 42, sku: 70, name: 150, variant: 365, quantity: 495 };
+  function tableHeader() {
+    doc.roundedRect(42, y, 511, 28, 4).fill(primaryColor);
+    doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(8)
+      .text("NO", columns.no + 7, y + 10, { width: 22 })
+      .text("SKU", columns.sku + 6, y + 10, { width: 72 })
+      .text("BARANG", columns.name + 6, y + 10, { width: 205 })
+      .text("VARIAN", columns.variant + 6, y + 10, { width: 120 })
+      .text("JUMLAH", columns.quantity, y + 10, { width: 50, align: "right" });
+    y += 28;
+  }
+  y += 12;
+  doc.fillColor("#102039").font("Helvetica-Bold").fontSize(13).text("Rekap kebutuhan barang", 42, y);
+  y += 22;
+  tableHeader();
+  workOrder.items.forEach((item, index) => {
+    if (y > 700) {
+      doc.addPage();
+      y = 44;
+      tableHeader();
+    }
+    const variant = item.variant ? `${item.variantLabel || "Varian"}: ${item.variant}` : "—";
+    const rowHeight = Math.max(35, doc.heightOfString(item.productName, { width: 205 }) + 17);
+    if (index % 2 === 0) doc.rect(42, y, 511, rowHeight).fill("#f3f6fa");
+    doc.fillColor("#102039").font("Helvetica").fontSize(8.5)
+      .text(String(index + 1), columns.no + 7, y + 12, { width: 22 })
+      .text(item.sku, columns.sku + 6, y + 12, { width: 72 })
+      .font("Helvetica-Bold").text(item.productName, columns.name + 6, y + 12, { width: 205 })
+      .font("Helvetica").text(variant, columns.variant + 6, y + 12, { width: 120 })
+      .font("Helvetica-Bold").text(`${item.quantity} pcs`, columns.quantity, y + 12, { width: 50, align: "right" });
+    y += rowHeight;
+  });
+
+  if (y > 650) {
+    doc.addPage();
+    y = 60;
+  }
+  y += 28;
+  doc.strokeColor("#dfe5ee").moveTo(42, y).lineTo(553, y).stroke();
+  y += 18;
+  doc.fillColor("#657289").font("Helvetica").fontSize(9).text("Dibuat oleh", 65, y, { width: 150, align: "center" });
+  doc.text("Diterima vendor", 380, y, { width: 150, align: "center" });
+  doc.moveTo(65, y + 72).lineTo(215, y + 72).stroke();
+  doc.moveTo(380, y + 72).lineTo(530, y + 72).stroke();
+  doc.fillColor("#657289").fontSize(8).text("Dokumen ini merupakan rekap kebutuhan barang dari pesanan yang dipilih pada sistem merchandise.", 42, 760, { width: 511, align: "center" });
+  doc.end();
+}
+
+module.exports = { renderOrderPdf, renderWorkOrderPdf };

@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ainet-merchandise:1.4.0
+    image: ainet-merchandise:1.5.0
     container_name: ainet-merchandise
     restart: unless-stopped
     ports:

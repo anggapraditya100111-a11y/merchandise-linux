@@ -75,3 +75,12 @@ test("deskripsi multiline dan status pesanan tersedia di katalog serta admin", (
   assert.match(adminScript, /data-order-status-change="DONE"/);
   assert.match(server, /api\/admin\/orders\/:number\/status/);
 });
+
+test("Work Order vendor merekap order terpilih dan menyediakan PDF", () => {
+  assert.match(adminHtml, /data-order-status="WORK_ORDERS"/);
+  assert.match(adminHtml, /id="create-work-order"/);
+  assert.match(adminScript, /selectedOrderNumbers/);
+  assert.match(adminScript, /aggregateWorkOrderItems/);
+  assert.match(server, /api\/admin\/work-orders/);
+  assert.match(server, /renderWorkOrderPdf/);
+});

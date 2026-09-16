@@ -88,6 +88,8 @@ test("migrasi database lama menambahkan galeri, kategori, pengaturan, catatan, d
   assert.ok(migrated.prepare("PRAGMA table_info(orders)").all().some((column) => column.name === "status"));
   assert.ok(migrated.prepare("PRAGMA table_info(orders)").all().some((column) => column.name === "completed_at"));
   assert.deepEqual({ ...migrated.prepare("SELECT status, completed_at FROM orders WHERE id = 'ord_legacy'").get() }, { status: "PROCESSING", completed_at: null });
+  assert.equal(migrated.prepare("SELECT COUNT(*) AS total FROM sqlite_master WHERE type = 'table' AND name = 'work_orders'").get().total, 1);
+  assert.equal(migrated.prepare("SELECT COUNT(*) AS total FROM sqlite_master WHERE type = 'table' AND name = 'work_order_items'").get().total, 1);
   assert.equal(migrated.prepare("SELECT COUNT(*) AS total FROM categories WHERE name = 'Kategori Lama'").get().total, 1);
   assert.equal(migrated.prepare("SELECT COUNT(*) AS total FROM product_images WHERE product_id = 'prd_legacy'").get().total, 1);
   migrated.close();
@@ -199,7 +201,7 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   assert.equal(categoryCreateResponse.status, 201);
   const createdCategory = (await categoryCreateResponse.json()).category;
 
-  const imageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZPx8AAAAASUVORK5CYII=", "base64");
+  const imageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
   const productForm = new FormData();
   productForm.set("sku", "AIN-TEST-005");
   productForm.set("name", "Produk Galeri Tes");
@@ -337,15 +339,51 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   });
   assert.equal(invalidStatusResponse.status, 400);
 
-  const completeOrderResponse = await fetch(`${base}/api/admin/orders/${encodeURIComponent(whatsappOrder.order.orderNumber)}/status`, {
+  const createWorkOrderResponse = await fetch(`${base}/api/admin/work-orders`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({
+      vendorName: "CV Vendor Pengujian",
+      note: "Selesaikan sesuai spesifikasi barang.",
+      orderNumbers: [orderData.order.orderNumber, whatsappOrder.order.orderNumber],
+    }),
+  });
+  assert.equal(createWorkOrderResponse.status, 201, await createWorkOrderResponse.clone().text());
+  const createdWorkOrder = (await createWorkOrderResponse.json()).workOrder;
+  assert.match(createdWorkOrder.workOrderNumber, /^WO-\d{8}-\d{4}$/);
+  assert.equal(createdWorkOrder.vendorName, "CV Vendor Pengujian");
+  assert.equal(createdWorkOrder.orders.length, 2);
+  assert.equal(createdWorkOrder.items.length, 1);
+  assert.equal(createdWorkOrder.items[0].quantity, 3);
+  assert.equal(createdWorkOrder.status, "VENDOR_PROCESSING");
+
+  const duplicateWorkOrderResponse = await fetch(`${base}/api/admin/work-orders`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ vendorName: "Vendor Lain", orderNumbers: [orderData.order.orderNumber] }),
+  });
+  assert.equal(duplicateWorkOrderResponse.status, 400);
+
+  const linkedOrderDeleteResponse = await fetch(`${base}/api/admin/orders/${encodeURIComponent(orderData.order.orderNumber)}`, {
+    method: "DELETE", headers: { cookie, "sec-fetch-site": "same-origin" },
+  });
+  assert.equal(linkedOrderDeleteResponse.status, 400);
+
+  const workOrderPdfResponse = await fetch(`${base}/api/admin/work-orders/${encodeURIComponent(createdWorkOrder.workOrderNumber)}/pdf`, { headers: { cookie } });
+  assert.equal(workOrderPdfResponse.status, 200);
+  assert.match(workOrderPdfResponse.headers.get("content-type"), /application\/pdf/);
+  assert.equal(Buffer.from(await workOrderPdfResponse.arrayBuffer()).subarray(0, 4).toString(), "%PDF");
+
+  const completeWorkOrderResponse = await fetch(`${base}/api/admin/work-orders/${encodeURIComponent(createdWorkOrder.workOrderNumber)}/status`, {
     method: "PATCH",
     headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
     body: JSON.stringify({ status: "DONE" }),
   });
-  assert.equal(completeOrderResponse.status, 200);
-  const completedOrder = (await completeOrderResponse.json()).order;
-  assert.equal(completedOrder.status, "DONE");
-  assert.ok(completedOrder.completedAt);
+  assert.equal(completeWorkOrderResponse.status, 200);
+  const completedWorkOrder = (await completeWorkOrderResponse.json()).workOrder;
+  assert.equal(completedWorkOrder.status, "DONE");
+  assert.ok(completedWorkOrder.completedAt);
+  assert.ok(completedWorkOrder.orders.every((order) => order.status === "DONE"));
 
   const backupResponse = await fetch(`${base}/api/admin/backup`, { method: "POST", headers: { cookie, "sec-fetch-site": "same-origin" } });
   assert.equal(backupResponse.status, 200);
@@ -361,6 +399,23 @@ test("alur katalog, order, PDF, admin, backup dan restore", { timeout: 30_000 },
   const restoredOrders = (await ordersAfterRestore.json()).orders;
   assert.equal(restoredOrders.length, 2);
   assert.equal(restoredOrders.find((order) => order.orderNumber === whatsappOrder.order.orderNumber).status, "DONE");
+  const workOrdersAfterRestore = await fetch(`${base}/api/admin/work-orders`, { headers: { cookie } }).then((response) => response.json());
+  assert.equal(workOrdersAfterRestore.workOrders.length, 1);
+  assert.equal(workOrdersAfterRestore.workOrders[0].status, "DONE");
+
+  const reopenWorkOrderResponse = await fetch(`${base}/api/admin/work-orders/${encodeURIComponent(createdWorkOrder.workOrderNumber)}/status`, {
+    method: "PATCH",
+    headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ status: "VENDOR_PROCESSING" }),
+  });
+  assert.equal(reopenWorkOrderResponse.status, 200);
+  assert.ok((await reopenWorkOrderResponse.json()).workOrder.orders.every((order) => order.status === "PROCESSING"));
+
+  const cancelWorkOrderResponse = await fetch(`${base}/api/admin/work-orders/${encodeURIComponent(createdWorkOrder.workOrderNumber)}`, {
+    method: "DELETE", headers: { cookie, "sec-fetch-site": "same-origin" },
+  });
+  assert.equal(cancelWorkOrderResponse.status, 204);
+  assert.equal((await fetch(`${base}/api/admin/work-orders`, { headers: { cookie } }).then((response) => response.json())).workOrders.length, 0);
 
   const invalidPasswordResponse = await fetch(`${base}/api/admin/password`, {
     method: "POST", headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },

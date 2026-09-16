@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 — 2026-09-16
+
+- Tambahkan tab **Work Order** pada menu Pesanan.
+- Admin dapat memilih beberapa order On proses lalu membuat satu Work Order untuk vendor.
+- Barang dengan SKU dan varian yang sama dijumlahkan otomatis menjadi total kebutuhan per item.
+- Cegah satu pesanan masuk ke lebih dari satu Work Order dan lindungi order terkait dari penghapusan langsung.
+- Tambahkan nomor WO otomatis, nama vendor, catatan, order sumber, status Diproses vendor/Selesai, serta PDF vendor.
+- Menyelesaikan atau membuka kembali Work Order otomatis menyelaraskan status seluruh order sumber.
+- Work Order dan seluruh relasinya ikut tersimpan dalam backup/restore tanpa mengubah data pesanan lama.
+
 ## 1.4.0 — 2026-09-16
 
 - Pertahankan baris baru pada deskripsi produk agar daftar dengan strip tetap tersusun vertikal di katalog.
