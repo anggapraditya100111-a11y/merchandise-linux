@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.6 — 2026-09-16
+
+- Kirim HTML, JavaScript, dan CSS aplikasi dengan `Cache-Control: no-store` agar browser tidak mencampur tampilan versi lama dan baru.
+- Muat ulang konfigurasi AXINDO Access tanpa cache saat halaman dibuka dan ketika tombol login digunakan.
+- Lindungi render kolom Work Order ketika browser masih membawa struktur HTML lama agar login lokal tidak gagal dengan error `classList`.
+
 ## 1.5.5 — 2026-09-16
 
 - Kirim source build sebagai stream tar agar BuildKit menerima tepat isi paket yang sudah diverifikasi.

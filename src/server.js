@@ -57,7 +57,15 @@ app.get("/theme.css", (_req, res) => {
   const settings = db.getSettings();
   res.type("text/css").set("Cache-Control", "no-store").send(`:root{--blue:${settings.primaryColor};--blue2:${settings.secondaryColor};--orange:${settings.accentColor}}`);
 });
-app.use(express.static(PUBLIC_DIR, { extensions: ["html"], maxAge: 0 }));
+app.use(express.static(PUBLIC_DIR, {
+  extensions: ["html"],
+  maxAge: 0,
+  setHeaders(res, filePath) {
+    if ([".html", ".js", ".css"].includes(path.extname(filePath).toLowerCase())) {
+      res.setHeader("Cache-Control", "no-store");
+    }
+  },
+}));
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false });
 const orderLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 25, standardHeaders: true, legacyHeaders: false });

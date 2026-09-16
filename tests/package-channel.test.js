@@ -78,6 +78,9 @@ test("deployment Ubuntu dan AXINDO Access tersedia", () => {
   assert.match(catalogScript, /window\.name === channel/);
   assert.match(server, /same-origin-allow-popups/);
   assert.match(server, /req\.admin\.authSource === "ACCESS"/);
+  assert.match(server, /Cache-Control", "no-store"/);
+  assert.match(adminScript, /api\/public\/config\?v=\$\{Date\.now\(\)\}/);
+  assert.match(adminScript, /querySelector\("\.select-order-column"\)\?\.classList/);
 });
 
 test("deskripsi multiline dan status pesanan tersedia di katalog serta admin", () => {

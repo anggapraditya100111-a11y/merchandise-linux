@@ -136,6 +136,9 @@
   }
 
   async function startAccessPopupLogin() {
+    if (!state.config?.auth?.accessHandoffReady) {
+      try { state.config = await api(`/api/public/config?v=${Date.now()}`, { cache: "no-store" }); } catch {}
+    }
     const access = state.config?.auth;
     if (!access?.accessHandoffReady) return showLogin("Koneksi AXINDO Access pada server belum aktif.");
     if (popupLogin?.window && !popupLogin.window.closed) return popupLogin.window.focus();
@@ -238,7 +241,7 @@
     const orders = state.orders.filter((order) => order.status === state.orderStatus && (!query || [order.orderNumber, order.customerName, order.popName, order.whatsapp, order.note, order.workOrder?.workOrderNumber].some((value) => String(value || "").toLowerCase().includes(query))));
     const processing = state.orderStatus === "PROCESSING";
     el("work-order-selection").classList.toggle("hidden", !processing);
-    document.querySelector(".select-order-column").classList.toggle("selection-disabled", !processing);
+    document.querySelector(".select-order-column")?.classList.toggle("selection-disabled", !processing);
     const visibleSelectable = orders.filter((order) => !order.workOrder);
     const allSelected = visibleSelectable.length > 0 && visibleSelectable.every((order) => state.selectedOrderNumbers.has(order.orderNumber));
     el("select-all-orders").checked = allSelected;
@@ -688,7 +691,7 @@
 
   (async () => {
     try { const publicSettings = await api("/api/settings"); applySettings(publicSettings.settings); } catch {}
-    try { state.config = await api("/api/public/config"); } catch { state.config = { auth: { accessHandoffReady: false } }; }
+    try { state.config = await api(`/api/public/config?v=${Date.now()}`, { cache: "no-store" }); } catch { state.config = { auth: { accessHandoffReady: false } }; }
     try { await completeRedirectedAccessHandoff(); } catch (error) { showLogin(error.message); return; }
     try { const data = await api("/api/admin/session"); showAdmin(data.admin); await loadAll(); } catch { showLogin(); }
   })();
