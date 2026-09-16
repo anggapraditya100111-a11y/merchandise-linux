@@ -95,10 +95,24 @@ docker compose -f "$app_directory/docker-compose.yml" --env-file "$app_directory
 
 old_image_id="$(docker inspect ainet-merchandise --format '{{.Image}}' 2>/dev/null || true)"
 old_image_ref="$(docker inspect ainet-merchandise --format '{{.Config.Image}}' 2>/dev/null || true)"
+rollback_image_ref="ainet-merchandise:rollback-$timestamp"
+if [ -n "$old_image_id" ]; then
+  docker image tag "$old_image_id" "$rollback_image_ref"
+fi
 
 echo "Membangun versi terbaru..."
-if ! docker compose -f "$new_source/docker-compose.yml" --env-file "$app_directory/.env" build --no-cache ainet-merchandise; then
+new_image_ref="ainet-merchandise:$expected_version"
+if ! docker build --no-cache --file "$new_source/Dockerfile" --tag "$new_image_ref" "$new_source"; then
   echo "Build versi baru gagal. Source dan container lama tetap digunakan."
+  exit 1
+fi
+built_version="$(docker run --rm --entrypoint sh "$new_image_ref" -c 'tr -d "[:space:]" < /app/VERSION.txt' 2>/dev/null || true)"
+if [ "$built_version" != "$expected_version" ]; then
+  echo "Image hasil build berisi versi ${built_version:-tidak-terdeteksi}, bukan $expected_version."
+  if [ -n "$old_image_ref" ] && docker image inspect "$rollback_image_ref" >/dev/null 2>&1; then
+    docker image tag "$rollback_image_ref" "$old_image_ref"
+  fi
+  echo "Update dihentikan sebelum source atau container aktif diubah."
   exit 1
 fi
 
@@ -125,7 +139,7 @@ elif ! grep -q '^TRUST_PROXY=' .env; then
   printf '\nTRUST_PROXY=true\n' >> .env
 fi
 start_failed=false
-if ! docker compose --env-file .env up -d --force-recreate; then
+if ! docker compose --env-file .env up -d --force-recreate --no-build; then
   start_failed=true
 fi
 
@@ -164,8 +178,8 @@ if [ "$healthy" != true ]; then
     mv "$item" "$app_directory/"
   done < <(find "$rollback_directory" -mindepth 1 -maxdepth 1 -print0)
   rmdir "$rollback_directory"
-  if [ -n "$old_image_id" ] && [ -n "$old_image_ref" ]; then
-    docker image tag "$old_image_id" "$old_image_ref"
+  if [ -n "$old_image_ref" ] && docker image inspect "$rollback_image_ref" >/dev/null 2>&1; then
+    docker image tag "$rollback_image_ref" "$old_image_ref"
   fi
   cd "$app_directory"
   docker compose --env-file .env up -d --force-recreate --no-build
@@ -174,6 +188,7 @@ if [ "$healthy" != true ]; then
 fi
 
 rm -rf -- "$rollback_directory"
+docker image rm "$rollback_image_ref" >/dev/null 2>&1 || true
 echo "Update selesai. Versi aktif:"
 curl --fail --silent "http://127.0.0.1:$app_port/api/health"
 echo

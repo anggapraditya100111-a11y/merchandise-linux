@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.4 — 2026-09-16
+
+- Bangun image langsung dari direktori source staging yang eksplisit agar Docker tidak mengambil konteks build aplikasi lama.
+- Periksa `VERSION.txt` di dalam image sebelum source dan container aktif diganti.
+- Simpan tag image rollback sebelum build dan jalankan container dengan `--no-build` agar proses pemulihan tidak kehilangan image lama.
+
 ## 1.5.3 — 2026-09-16
 
 - Bandingkan versi source lokal dengan versi yang benar-benar berjalan di dalam container sebelum menyatakan aplikasi sudah terbaru.

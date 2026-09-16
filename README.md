@@ -198,8 +198,8 @@ Test otomatis memeriksa katalog, deskripsi multiline, kategori, galeri lima foto
 Push tag versi untuk membangun image multi-arsitektur melalui GitHub Actions:
 
 ```bash
-git tag v1.5.3
-git push origin v1.5.3
+git tag v1.5.4
+git push origin v1.5.4
 ```
 
 Workflow menerbitkan `ghcr.io/anggapraditya100111-a11y/ainet-merchandise:latest`. Pastikan package GHCR diatur menjadi **Public** sebelum menggunakan `docker-compose.casaos.yml`.

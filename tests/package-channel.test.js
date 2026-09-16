@@ -32,7 +32,10 @@ test("updater mempertahankan backup, health check, dan rollback", () => {
   assert.match(updater, /old_image_id/);
   assert.match(updater, /TRUST_PROXY=false/);
   assert.match(updater, /TRUST_PROXY=true/);
-  assert.match(updater, /build --no-cache ainet-merchandise/);
+  assert.match(updater, /docker build --no-cache --file/);
+  assert.match(updater, /built_version/);
+  assert.match(updater, /rollback_image_ref/);
+  assert.match(updater, /up -d --force-recreate --no-build/);
   assert.match(updater, /container_version/);
   assert.match(updater, /expected_version/);
   assert.match(updater, /health_payload/);
