@@ -72,6 +72,11 @@ for required_file in Dockerfile docker-compose.yml install.sh install-ubuntu.sh 
     exit 1
   fi
 done
+expected_version="$(tr -d '[:space:]' < "$new_source/VERSION.txt")"
+if ! [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Versi paket pembaruan tidak valid: '$expected_version'."
+  exit 1
+fi
 
 if ! docker compose -f "$app_directory/docker-compose.yml" --env-file "$app_directory/.env" ps --status running --services | grep -qx 'ainet-merchandise'; then
   echo "Container ainet-merchandise tidak sedang berjalan. Update dibatalkan agar backup dapat dibuat dengan aman."
@@ -86,7 +91,7 @@ old_image_id="$(docker inspect ainet-merchandise --format '{{.Image}}' 2>/dev/nu
 old_image_ref="$(docker inspect ainet-merchandise --format '{{.Config.Image}}' 2>/dev/null || true)"
 
 echo "Membangun versi terbaru..."
-if ! docker compose -f "$new_source/docker-compose.yml" --env-file "$app_directory/.env" build; then
+if ! docker compose -f "$new_source/docker-compose.yml" --env-file "$app_directory/.env" build --no-cache ainet-merchandise; then
   echo "Build versi baru gagal. Source dan container lama tetap digunakan."
   exit 1
 fi
@@ -121,18 +126,27 @@ fi
 app_port="$(sed -n 's/^APP_PORT=//p' .env | tail -n 1)"
 app_port="${app_port:-8092}"
 healthy=false
+health_payload=""
 if [ "$start_failed" = false ]; then
   for _attempt in $(seq 1 30); do
-    if curl --fail --silent "http://127.0.0.1:$app_port/api/health" >/dev/null 2>&1; then
-      healthy=true
-      break
+    if health_payload="$(curl --fail --silent "http://127.0.0.1:$app_port/api/health" 2>/dev/null)"; then
+      container_version="$(docker compose --env-file .env exec -T ainet-merchandise sh -c 'tr -d "[:space:]" < /app/VERSION.txt' 2>/dev/null || true)"
+      if [ "$container_version" = "$expected_version" ] \
+        && printf '%s' "$health_payload" | grep -Eq '"version"[[:space:]]*:[[:space:]]*"'"$expected_version"'"'; then
+        healthy=true
+        break
+      fi
     fi
     sleep 2
   done
 fi
 
 if [ "$healthy" != true ]; then
-  echo "Versi baru tidak sehat. Mengembalikan source dan image sebelumnya..."
+  echo "Versi baru tidak sehat atau container tidak menjalankan versi $expected_version."
+  if [ -n "$health_payload" ]; then
+    echo "Respons health terakhir: $health_payload"
+  fi
+  echo "Mengembalikan source dan image sebelumnya..."
   mkdir "$failed_source_directory"
   while IFS= read -r -d '' item; do
     if [ "$(basename "$item")" = ".env" ]; then

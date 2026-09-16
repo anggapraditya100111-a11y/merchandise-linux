@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2 — 2026-09-16
+
+- Paksa build update tanpa cache agar source lama tidak dapat tertanam kembali ke image dengan tag versi baru.
+- Verifikasi versi di dalam container dan respons health terhadap `VERSION.txt` sebelum update dinyatakan berhasil.
+- Jalankan rollback otomatis jika container sehat tetapi masih menjalankan versi aplikasi yang lama.
+
 ## 1.5.1 — 2026-09-16
 
 - Tambahkan cache-busting pada updater dan installer agar checksum serta paket terbaru tidak tertahan cache `raw.githubusercontent.com`.
