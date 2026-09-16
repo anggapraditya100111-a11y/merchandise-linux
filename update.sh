@@ -6,6 +6,7 @@ install_root="$(dirname "$app_directory")"
 package_base_url="https://raw.githubusercontent.com/anggapraditya100111-a11y/merchandise-linux/main"
 package_name="ainet-merchandise-latest.tar.gz"
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+cache_bust="$(date -u +%s)"
 
 case "$app_directory" in
   ""|"/"|"/DATA"|"/DATA/"|"/DATA/AppData"|"/DATA/AppData/"|"/opt"|"/opt/")
@@ -41,7 +42,7 @@ trap cleanup EXIT
 
 echo "Memeriksa versi terbaru..."
 curl --fail --location --silent --show-error --retry 3 --connect-timeout 20 --max-time 120 \
-  "$package_base_url/$package_name.sha256" -o "$staging_directory/$package_name.sha256"
+  "$package_base_url/$package_name.sha256?v=$cache_bust" -o "$staging_directory/$package_name.sha256"
 package_hash="$(awk 'NR == 1 { print $1 }' "$staging_directory/$package_name.sha256")"
 if [ -z "$package_hash" ]; then
   echo "Checksum paket terbaru tidak valid."
@@ -56,7 +57,7 @@ fi
 
 echo "Mengunduh paket pembaruan..."
 curl --fail --location --silent --show-error --retry 3 --connect-timeout 20 --max-time 600 \
-  "$package_base_url/$package_name" -o "$staging_directory/$package_name"
+  "$package_base_url/$package_name?v=$cache_bust" -o "$staging_directory/$package_name"
 (
   cd "$staging_directory"
   sha256sum --check "$package_name.sha256"

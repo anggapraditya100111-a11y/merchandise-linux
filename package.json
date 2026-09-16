@@ -1,6 +1,6 @@
 {
   "name": "ainet-merchandise",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "description": "Katalog pemesanan merchandise internal AXINDO untuk Ubuntu Server dan CasaOS",
   "main": "src/server.js",

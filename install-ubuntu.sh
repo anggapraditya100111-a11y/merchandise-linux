@@ -5,6 +5,7 @@ package_base_url="https://raw.githubusercontent.com/anggapraditya100111-a11y/mer
 package_name="ainet-merchandise-latest.tar.gz"
 app_directory="/opt/axindo-merchandise"
 data_root="/var/lib/axindo-merchandise"
+cache_bust="$(date -u +%s)"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Jalankan installer dengan sudo:"
@@ -43,9 +44,9 @@ trap cleanup EXIT
 
 echo "Mengunduh paket AXINDO Merchandise..."
 curl --fail --location --silent --show-error --retry 3 --connect-timeout 20 --max-time 600 \
-  "$package_base_url/$package_name.sha256" -o "$staging_directory/$package_name.sha256"
+  "$package_base_url/$package_name.sha256?v=$cache_bust" -o "$staging_directory/$package_name.sha256"
 curl --fail --location --silent --show-error --retry 3 --connect-timeout 20 --max-time 600 \
-  "$package_base_url/$package_name" -o "$staging_directory/$package_name"
+  "$package_base_url/$package_name?v=$cache_bust" -o "$staging_directory/$package_name"
 
 echo "Memeriksa integritas paket..."
 (

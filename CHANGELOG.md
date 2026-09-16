@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1 — 2026-09-16
+
+- Tambahkan cache-busting pada updater dan installer agar checksum serta paket terbaru tidak tertahan cache `raw.githubusercontent.com`.
+- Pastikan checksum dan arsip rilis selalu diambil dari generasi URL yang sama sehingga verifikasi SHA-256 tetap konsisten.
+
 ## 1.5.0 — 2026-09-16
 
 - Tambahkan tab **Work Order** pada menu Pesanan.

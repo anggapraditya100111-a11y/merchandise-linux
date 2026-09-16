@@ -20,6 +20,8 @@ test("installer dan updater memakai jalur paket raw GitHub", () => {
     assert.match(script, /sha256sum --check/);
     assert.doesNotMatch(script, /git clone|git fetch|git pull/);
     assert.doesNotMatch(script, /https:\/\/github\.com/);
+    assert.match(script, /cache_bust/);
+    assert.match(script, /\?v=\$cache_bust/);
   }
 });
 
