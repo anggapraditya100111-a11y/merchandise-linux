@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.3 — 2026-09-16
+
+- Bandingkan versi source lokal dengan versi yang benar-benar berjalan di dalam container sebelum menyatakan aplikasi sudah terbaru.
+- Paksa rebuild tanpa cache ketika checksum paket sudah terbaru tetapi container masih menjalankan source versi lama.
+- Tangani pembaruan updater yang mengganti dirinya sendiri di tengah proses tanpa meloloskan container lama pada pembaruan berikutnya.
+
 ## 1.5.2 — 2026-09-16
 
 - Paksa build update tanpa cache agar source lama tidak dapat tertanam kembali ke image dengan tag versi baru.

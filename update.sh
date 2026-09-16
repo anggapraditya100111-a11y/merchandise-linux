@@ -50,9 +50,15 @@ if [ -z "$package_hash" ]; then
 fi
 
 installed_hash="$(sed -n '1p' "$app_directory/.package-sha256" 2>/dev/null || true)"
+installed_version="$(tr -d '[:space:]' < "$app_directory/VERSION.txt" 2>/dev/null || true)"
+running_version="$(docker exec ainet-merchandise sh -c 'tr -d "[:space:]" < /app/VERSION.txt' 2>/dev/null || true)"
 if [ "$installed_hash" = "$package_hash" ]; then
-  echo "AINET Merchandise sudah menggunakan versi terbaru."
-  exit 0
+  if [ -n "$installed_version" ] && [ "$running_version" = "$installed_version" ]; then
+    echo "AINET Merchandise sudah menggunakan versi terbaru."
+    exit 0
+  fi
+  echo "Source versi $installed_version sudah terbaru, tetapi container masih versi ${running_version:-tidak-terdeteksi}."
+  echo "Updater akan membangun ulang image dan container tanpa cache."
 fi
 
 echo "Mengunduh paket pembaruan..."

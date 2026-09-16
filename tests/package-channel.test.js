@@ -36,6 +36,8 @@ test("updater mempertahankan backup, health check, dan rollback", () => {
   assert.match(updater, /container_version/);
   assert.match(updater, /expected_version/);
   assert.match(updater, /health_payload/);
+  assert.match(updater, /running_version/);
+  assert.match(updater, /Source versi \$installed_version sudah terbaru/);
 });
 
 test("form order menyimpan referensi sebelum request asynchronous", () => {
