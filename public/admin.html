@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102039">
   <title>Admin · AINET Merchandise</title>
-  <link rel="stylesheet" href="/styles.css?v=1.5.6">
-  <link rel="stylesheet" href="/theme.css?v=1.5.6">
-  <script src="/admin.js?v=1.5.6" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=1.5.7">
+  <link rel="stylesheet" href="/theme.css?v=1.5.7">
+  <script src="/admin.js?v=1.5.7" defer></script>
 </head>
 <body class="admin-body">
   <main id="login-view" class="login-shell">
@@ -44,7 +44,7 @@
     <section class="admin-content">
       <header class="admin-topbar">
         <div><span class="kicker">Kantor pusat</span><h1 id="page-title">Daftar pesanan</h1></div>
-        <a class="button secondary" href="/">Lihat katalog</a>
+        <div class="admin-topbar-actions"><a class="button secondary" href="/">Lihat katalog</a><button id="mobile-logout" class="button secondary mobile-logout" type="button">Keluar</button></div>
       </header>
       <p id="admin-message" class="alert success hidden" role="status"></p>
 
@@ -144,5 +144,17 @@
   <div id="create-work-order-modal" class="modal-backdrop hidden"><section class="modal work-order-modal" role="dialog" aria-modal="true" aria-labelledby="create-work-order-title"><button class="icon-button modal-close" data-close-modal="create-work-order-modal" aria-label="Tutup">×</button><span class="kicker">Pengadaan vendor</span><h2 id="create-work-order-title">Buat Work Order</h2><form id="work-order-form" class="product-form"><label><span>Nama vendor</span><input name="vendorName" maxlength="120" placeholder="Contoh: CV Sinar Grafika" required></label><label><span>Catatan untuk vendor (opsional)</span><textarea name="note" rows="3" maxlength="500" placeholder="Contoh: Mohon selesai paling lambat tanggal …"></textarea></label><div><span class="field-label">Rekap kebutuhan</span><div id="work-order-preview" class="work-order-preview"></div></div><button class="button primary wide" type="submit">Buat dan simpan Work Order</button></form></section></div>
 
   <div id="work-order-modal" class="modal-backdrop hidden"><section class="modal work-order-modal" role="dialog" aria-modal="true"><button class="icon-button modal-close" data-close-modal="work-order-modal" aria-label="Tutup">×</button><span class="kicker">Detail Work Order</span><h2 id="work-order-modal-title">—</h2><div id="work-order-detail"></div></section></div>
+
+  <div id="logout-modal" class="modal-backdrop hidden">
+    <section class="modal logout-modal" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
+      <button class="icon-button modal-close" data-close-modal="logout-modal" aria-label="Tutup">×</button>
+      <span class="kicker">Keamanan akun</span><h2 id="logout-modal-title">Pilih cara keluar</h2>
+      <p class="muted">Pilih apakah sesi AXINDO Access juga ingin diakhiri.</p>
+      <div class="logout-choice-list">
+        <button class="logout-choice primary-choice" type="button" data-logout-scope="axindo"><span>⇥</span><div><strong>Keluar dari AXINDO</strong><small>Keluar dari Store dan akhiri sesi AXINDO Access.</small></div></button>
+        <button class="logout-choice" type="button" data-logout-scope="local"><span>↪</span><div><strong>Keluar dari aplikasi ini saja</strong><small>Sesi aplikasi AXINDO lain tetap aktif.</small></div></button>
+      </div>
+    </section>
+  </div>
 </body>
 </html>
