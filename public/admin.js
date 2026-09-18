@@ -364,6 +364,24 @@
 
   function closeModal(id) { el(id).classList.add("hidden"); }
 
+  function openLogoutChoices() {
+    el("logout-modal").classList.remove("hidden");
+  }
+
+  async function logout(scope) {
+    closeModal("logout-modal");
+    try {
+      const result = await api("/api/admin/session", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scope }),
+      });
+      state.admin = null;
+      if (result?.redirectUrl) return window.location.assign(result.redirectUrl);
+    } catch {}
+    showLogin();
+  }
+
   function showOrder(order) {
     el("order-modal-title").textContent = order.orderNumber;
     el("order-detail").innerHTML = `<div class="order-info"><div><span>Nama pemesan</span><strong>${escapeHtml(order.customerName)}</strong></div><div><span>Asal PoP</span><strong>${escapeHtml(order.popName)}</strong></div><div><span>WhatsApp</span><strong>${escapeHtml(order.whatsapp)}</strong></div><div><span>Tanggal order</span><strong>${escapeHtml(dateTime(order.createdAt))}</strong></div><div><span>Status</span><strong>${order.status === "DONE" ? "Selesai" : "On proses"}</strong></div>${order.workOrder ? `<div><span>Work Order</span><strong>${escapeHtml(order.workOrder.workOrderNumber)}</strong></div>` : ""}${order.completedAt ? `<div><span>Selesai pada</span><strong>${escapeHtml(dateTime(order.completedAt))}</strong></div>` : ""}${order.note ? `<div class="order-note"><span>Catatan</span><strong>${escapeHtml(order.note)}</strong></div>` : ""}</div>
@@ -445,7 +463,9 @@
   });
   el("access-login").addEventListener("click", startAccessPopupLogin);
   window.addEventListener("message", handlePopupLoginMessage);
-  el("logout").addEventListener("click", async () => { await api("/api/admin/session", { method: "DELETE" }).catch(() => {}); showLogin(); });
+  el("logout").addEventListener("click", openLogoutChoices);
+  el("mobile-logout").addEventListener("click", openLogoutChoices);
+  document.querySelectorAll("[data-logout-scope]").forEach((button) => button.addEventListener("click", () => logout(button.dataset.logoutScope)));
   document.querySelector(".sidebar nav").addEventListener("click", (event) => { const button = event.target.closest("[data-tab]"); if (button) switchTab(button.dataset.tab); });
   document.querySelector(".settings-subnav").addEventListener("click", (event) => { const button = event.target.closest("[data-settings-section]"); if (button) switchSettingsSection(button.dataset.settingsSection); });
   el("order-search").addEventListener("input", renderOrders);
