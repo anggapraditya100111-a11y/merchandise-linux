@@ -366,9 +366,19 @@ app.get("/api/admin/session", (req, res) => {
   res.json({ admin: publicAdmin(admin) });
 });
 
-app.delete("/api/admin/session", auth.rejectCrossSite, (_req, res) => {
+app.delete("/api/admin/session", auth.rejectCrossSite, (req, res) => {
+  const scope = String(req.body?.scope || "local").trim().toLowerCase();
+  if (!["local", "axindo"].includes(scope)) return res.status(400).json({ error: "Pilihan keluar tidak valid." });
   res.clearCookie(auth.COOKIE_NAME, { ...auth.cookieOptions(), maxAge: undefined });
-  res.status(204).end();
+  let redirectUrl = "";
+  if (scope === "axindo") {
+    const returnTo = new URL("/admin", accessManifest().url);
+    returnTo.searchParams.set("logout", "axindo");
+    const accessLogout = new URL("/logout", ACCESS_PORTAL_URL);
+    accessLogout.searchParams.set("return_to", returnTo.href);
+    redirectUrl = accessLogout.href;
+  }
+  res.json({ ok: true, scope, redirectUrl });
 });
 
 app.get("/api/admin/orders", auth.requireAdmin, (_req, res) => res.json({ orders: db.listOrders() }));
