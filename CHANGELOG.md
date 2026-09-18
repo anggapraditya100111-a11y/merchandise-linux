@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.7 — 2026-09-18
+
+- Menambahkan pilihan keluar hanya dari Store atau sekaligus dari AXINDO Access.
+- Menyediakan tombol keluar yang tetap dapat dijangkau pada panel admin mobile.
+- Mengarahkan logout terpusat melalui endpoint aman AXINDO Access.
+
 ## 1.5.6 — 2026-09-16
 
 - Kirim HTML, JavaScript, dan CSS aplikasi dengan `Cache-Control: no-store` agar browser tidak mencampur tampilan versi lama dan baru.
