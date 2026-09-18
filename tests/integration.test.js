@@ -531,6 +531,18 @@ test("manifest dan login admin terhubung ke AXINDO Access", { timeout: 20_000 },
   assert.equal(password.status, 403);
   assert.match((await password.json()).error, /AXINDO ID/);
 
+  const logoutResponse = await fetch(`${base}/api/admin/session`, {
+    method: "DELETE", headers: { cookie, "content-type": "application/json", "sec-fetch-site": "same-origin" },
+    body: JSON.stringify({ scope: "axindo" }),
+  });
+  assert.equal(logoutResponse.status, 200);
+  const logout = await logoutResponse.json();
+  const logoutUrl = new URL(logout.redirectUrl);
+  assert.equal(logout.scope, "axindo");
+  assert.equal(logoutUrl.origin, "https://akses.axindo.my.id");
+  assert.equal(logoutUrl.pathname, "/logout");
+  assert.equal(new URL(logoutUrl.searchParams.get("return_to")).href, "https://katalog.axindo.my.id/admin?logout=axindo");
+
   const rejected = await fetch(`${base}/api/auth/access/complete`, {
     method: "POST", headers: { "content-type": "application/json", "sec-fetch-site": "same-origin" },
     body: JSON.stringify({ code: "z".repeat(43), verifier }),
