@@ -7,6 +7,7 @@
   const dateTime = (value) => new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
   const icon = (category) => category.toLowerCase().includes("sepatu") ? "👟" : category.toLowerCase().includes("akses") || category.toLowerCase().includes("mug") ? "☕" : "👕";
+  const isUnassignedProcessingOrder = (order) => order.status === "PROCESSING" && !order.workOrder;
 
   function visual(item, compact = false) {
     const imageUrl = item.images?.[0]?.url || item.imageUrl;
@@ -210,7 +211,7 @@
     ]);
     state.orders = orders.orders;
     state.workOrders = workOrders.workOrders;
-    const selectable = new Set(state.orders.filter((order) => order.status === "PROCESSING" && !order.workOrder).map((order) => order.orderNumber));
+    const selectable = new Set(state.orders.filter(isUnassignedProcessingOrder).map((order) => order.orderNumber));
     state.selectedOrderNumbers = new Set([...state.selectedOrderNumbers].filter((number) => selectable.has(number)));
     state.products = products.products;
     state.pops = pops.pops;
@@ -229,7 +230,7 @@
     el("metric-orders").textContent = state.orders.length;
     el("metric-today").textContent = state.orders.filter((order) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(order.createdAt)) === today).length;
     el("metric-month").textContent = rupiah(state.orders.filter((order) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).format(new Date(order.createdAt)).replace("/", "-") === month).reduce((sum, order) => sum + order.total, 0));
-    el("processing-count").textContent = state.orders.filter((order) => order.status === "PROCESSING").length;
+    el("processing-count").textContent = state.orders.filter(isUnassignedProcessingOrder).length;
     el("work-order-count").textContent = state.workOrders.length;
     el("done-count").textContent = state.orders.filter((order) => order.status === "DONE").length;
     document.querySelectorAll("[data-order-status]").forEach((button) => {
@@ -238,7 +239,10 @@
       button.setAttribute("aria-selected", String(active));
     });
     if (isWorkOrderView) return renderWorkOrders();
-    const orders = state.orders.filter((order) => order.status === state.orderStatus && (!query || [order.orderNumber, order.customerName, order.popName, order.whatsapp, order.note, order.workOrder?.workOrderNumber].some((value) => String(value || "").toLowerCase().includes(query))));
+    const orders = state.orders.filter((order) => {
+      if (state.orderStatus === "PROCESSING" && !isUnassignedProcessingOrder(order)) return false;
+      return order.status === state.orderStatus && (!query || [order.orderNumber, order.customerName, order.popName, order.whatsapp, order.note, order.workOrder?.workOrderNumber].some((value) => String(value || "").toLowerCase().includes(query)));
+    });
     const processing = state.orderStatus === "PROCESSING";
     el("work-order-selection").classList.toggle("hidden", !processing);
     document.querySelector(".select-order-column")?.classList.toggle("selection-disabled", !processing);

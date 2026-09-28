@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.8 — 2026-09-28
+
+- Sembunyikan pesanan yang sudah tergabung dalam Work Order dari tab **On proses**.
+- Sesuaikan jumlah badge On proses agar hanya menghitung pesanan yang belum masuk Work Order.
+- Pesanan kembali tampil di On proses secara otomatis apabila Work Order aktif dibatalkan.
+
 ## 1.5.7 — 2026-09-18
 
 - Menambahkan pilihan keluar hanya dari Store atau sekaligus dari AXINDO Access.

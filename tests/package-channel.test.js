@@ -97,6 +97,8 @@ test("Work Order vendor merekap order terpilih dan menyediakan PDF", () => {
   assert.match(adminHtml, /id="create-work-order"/);
   assert.match(adminScript, /selectedOrderNumbers/);
   assert.match(adminScript, /aggregateWorkOrderItems/);
+  assert.match(adminScript, /isUnassignedProcessingOrder/);
+  assert.match(adminScript, /state\.orderStatus === "PROCESSING" && !isUnassignedProcessingOrder\(order\)/);
   assert.match(server, /api\/admin\/work-orders/);
   assert.match(server, /renderWorkOrderPdf/);
 });
