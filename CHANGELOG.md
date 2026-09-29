@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.9 — 2026-09-29
+
+- Tampilkan hanya Work Order yang masih diproses vendor pada tab **Work Order**.
+- Pindahkan tampilan ke tab **Selesai** segera setelah Work Order ditandai selesai.
+- Pertahankan tautan nomor Work Order pada order selesai agar detail, PDF, dan aksi buka kembali tetap dapat diakses.
+
 ## 1.5.8 — 2026-09-28
 
 - Sembunyikan pesanan yang sudah tergabung dalam Work Order dari tab **On proses**.

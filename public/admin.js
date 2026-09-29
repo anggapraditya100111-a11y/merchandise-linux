@@ -231,7 +231,7 @@
     el("metric-today").textContent = state.orders.filter((order) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(order.createdAt)) === today).length;
     el("metric-month").textContent = rupiah(state.orders.filter((order) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).format(new Date(order.createdAt)).replace("/", "-") === month).reduce((sum, order) => sum + order.total, 0));
     el("processing-count").textContent = state.orders.filter(isUnassignedProcessingOrder).length;
-    el("work-order-count").textContent = state.workOrders.length;
+    el("work-order-count").textContent = state.workOrders.filter((workOrder) => workOrder.status === "VENDOR_PROCESSING").length;
     el("done-count").textContent = state.orders.filter((order) => order.status === "DONE").length;
     document.querySelectorAll("[data-order-status]").forEach((button) => {
       const active = button.dataset.orderStatus === state.orderStatus;
@@ -254,7 +254,7 @@
     el("selected-order-count").textContent = `${state.selectedOrderNumbers.size} pesanan dipilih`;
     el("create-work-order").disabled = state.selectedOrderNumbers.size === 0;
     el("orders-body").innerHTML = orders.map((order) => `<tr>
-      <td class="select-order-cell">${processing ? `<input type="checkbox" data-select-order="${escapeHtml(order.orderNumber)}"${state.selectedOrderNumbers.has(order.orderNumber) ? " checked" : ""}${order.workOrder ? " disabled" : ""} aria-label="Pilih ${escapeHtml(order.orderNumber)}">` : ""}</td><td><b>${escapeHtml(order.orderNumber)}</b>${order.workOrder ? `<small class="work-order-link">${escapeHtml(order.workOrder.workOrderNumber)}</small>` : ""}</td><td>${escapeHtml(dateTime(order.createdAt))}</td>
+      <td class="select-order-cell">${processing ? `<input type="checkbox" data-select-order="${escapeHtml(order.orderNumber)}"${state.selectedOrderNumbers.has(order.orderNumber) ? " checked" : ""}${order.workOrder ? " disabled" : ""} aria-label="Pilih ${escapeHtml(order.orderNumber)}">` : ""}</td><td><b>${escapeHtml(order.orderNumber)}</b>${order.workOrder ? `<button type="button" class="work-order-link" data-work-order="${escapeHtml(order.workOrder.workOrderNumber)}">${escapeHtml(order.workOrder.workOrderNumber)}</button>` : ""}</td><td>${escapeHtml(dateTime(order.createdAt))}</td>
       <td><strong>${escapeHtml(order.customerName)}</strong><small>${escapeHtml(order.whatsapp)}</small></td><td>${escapeHtml(order.popName)}</td>
       <td>${order.items.map((item) => `<small>${escapeHtml(item.productName)}${item.variant ? ` · ${escapeHtml(item.variantLabel || "Ukuran")}: ${escapeHtml(item.variant)}` : ""} × ${item.quantity}</small>`).join("")}</td>
       <td><b>${rupiah(order.total)}</b></td><td><span class="order-status-badge ${order.status === "DONE" ? "done" : "processing"}">${order.status === "DONE" ? "Selesai" : "On proses"}</span>${order.completedAt ? `<small>${escapeHtml(dateTime(order.completedAt))}</small>` : ""}</td><td><span class="table-actions"><button class="table-action" data-order="${order.orderNumber}">Detail</button>${order.workOrder ? "" : order.status === "DONE" ? `<button class="table-action" data-order-status-change="PROCESSING" data-order-number="${order.orderNumber}">Buka kembali</button>` : `<button class="table-action done-action" data-order-status-change="DONE" data-order-number="${order.orderNumber}">✓ Selesai</button>`}${order.workOrder ? "" : `<button class="table-action danger-text" data-delete-order="${order.orderNumber}">Hapus</button>`}</span></td>
@@ -263,11 +263,11 @@
 
   function renderWorkOrders() {
     const query = el("work-order-search").value.trim().toLowerCase();
-    const workOrders = state.workOrders.filter((workOrder) => !query || [
+    const workOrders = state.workOrders.filter((workOrder) => workOrder.status === "VENDOR_PROCESSING" && (!query || [
       workOrder.workOrderNumber, workOrder.vendorName, workOrder.note,
       ...workOrder.orders.flatMap((order) => [order.orderNumber, order.customerName, order.popName]),
       ...workOrder.items.flatMap((item) => [item.sku, item.productName, item.variant]),
-    ].some((value) => String(value || "").toLowerCase().includes(query)));
+    ].some((value) => String(value || "").toLowerCase().includes(query))));
     el("work-orders-body").innerHTML = workOrders.map((workOrder) => `<tr>
       <td><b>${escapeHtml(workOrder.workOrderNumber)}</b></td><td>${escapeHtml(dateTime(workOrder.createdAt))}</td>
       <td><strong>${escapeHtml(workOrder.vendorName)}</strong>${workOrder.note ? `<small>${escapeHtml(workOrder.note)}</small>` : ""}</td>
@@ -275,7 +275,7 @@
       <td>${workOrder.items.map((item) => `<small>${escapeHtml(item.productName)}${item.variant ? ` · ${escapeHtml(item.variantLabel || "Varian")}: ${escapeHtml(item.variant)}` : ""} × <b>${item.quantity}</b></small>`).join("")}</td>
       <td><span class="order-status-badge ${workOrder.status === "DONE" ? "done" : "processing"}">${workOrder.status === "DONE" ? "Selesai" : "Diproses vendor"}</span>${workOrder.completedAt ? `<small>${escapeHtml(dateTime(workOrder.completedAt))}</small>` : ""}</td>
       <td><span class="table-actions"><button class="table-action" data-work-order="${escapeHtml(workOrder.workOrderNumber)}">Detail</button><a class="table-action" href="/api/admin/work-orders/${encodeURIComponent(workOrder.workOrderNumber)}/pdf">PDF</a></span></td>
-    </tr>`).join("") || `<tr><td colspan="7" class="empty-table">Belum ada Work Order.</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="7" class="empty-table">Belum ada Work Order yang sedang diproses vendor.</td></tr>`;
   }
 
   function renderProducts() {
@@ -520,7 +520,7 @@
     try {
       await api(`/api/admin/work-orders/${encodeURIComponent(workOrderNumber)}/status`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
       closeModal("work-order-modal");
-      state.orderStatus = "WORK_ORDERS";
+      state.orderStatus = status === "DONE" ? "DONE" : "WORK_ORDERS";
       message(status === "DONE" ? `Work Order ${workOrderNumber} selesai. Order sumber dipindahkan ke tab Selesai.` : `Work Order ${workOrderNumber} dibuka kembali. Order sumber kembali ke On proses.`);
       await loadAll();
     } catch (error) { message(error.message, "error"); }
@@ -543,6 +543,8 @@
     renderOrders();
   });
   el("orders-body").addEventListener("click", (event) => {
+    const workOrder = event.target.closest("[data-work-order]");
+    if (workOrder) return showWorkOrder(state.workOrders.find((item) => item.workOrderNumber === workOrder.dataset.workOrder));
     const status = event.target.closest("[data-order-status-change]");
     if (status) return changeOrderStatus(status.dataset.orderNumber, status.dataset.orderStatusChange);
     const remove = event.target.closest("[data-delete-order]");

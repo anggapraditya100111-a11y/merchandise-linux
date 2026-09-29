@@ -11,7 +11,7 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 - Popup setelah order berhasil dengan pesan konfirmasi, nomor order otomatis, tombol PDF, dan tombol WhatsApp admin.
 - Download PDF order lengkap dengan gambar barang, ukuran/nomor, jumlah, harga, dan total nominal.
 - Panel admin untuk pesanan, status On proses/Selesai, Work Order vendor, barang, galeri maksimal 5 foto, varian, kategori, dan daftar PoP.
-- Work Order dibuat dari order yang dipilih, menjumlahkan barang serta varian yang sama, dan dapat diunduh sebagai PDF vendor.
+- Work Order dibuat dari order yang dipilih, menjumlahkan barang serta varian yang sama, dan dapat diunduh sebagai PDF vendor. Tab Work Order hanya menampilkan pekerjaan vendor yang masih aktif; hasil selesai tersimpan di tab Selesai.
 - Foto barang ditambahkan satu per satu sebagai thumbnail dan dapat disusun ulang dengan drag-and-drop.
 - Pengaturan nama aplikasi, teks header katalog, nama perusahaan, logo, warna, WhatsApp admin pusat, serta domain publik.
 - Slider gambar dan popup galeri besar dengan navigasi foto untuk setiap produk di katalog.
@@ -198,8 +198,8 @@ Test otomatis memeriksa katalog, deskripsi multiline, kategori, galeri lima foto
 Push tag versi untuk membangun image multi-arsitektur melalui GitHub Actions:
 
 ```bash
-git tag v1.5.8
-git push origin v1.5.8
+git tag v1.5.9
+git push origin v1.5.9
 ```
 
 Workflow menerbitkan `ghcr.io/anggapraditya100111-a11y/ainet-merchandise:latest`. Pastikan package GHCR diatur menjadi **Public** sebelum menggunakan `docker-compose.casaos.yml`.
