@@ -4,7 +4,9 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 
 ## Fitur
 
-- Katalog publik tanpa login.
+- Katalog bisa dibuka tanpa akun pemesan; akses kata kunci bersifat opsional.
+- Akses katalog opsional dengan kata kunci dan pratinjau blur. Jika aktif, daftar barang, data katalog, checkout, serta unggahan hanya tersedia dengan sesi katalog atau admin. Tautan PDF pesanan tetap memakai token yang sudah ada.
+- Persediaan per SKU, reservasi, harga perolehan dan harga jual, Ready/PO, pencatatan barang masuk, stok opname, dan kartu stok.
 - Keranjang belanja tanpa sistem pembayaran.
 - Nama pemesan, asal PoP, nomor WhatsApp, dan catatan opsional maksimal 500 karakter.
 - Pilihan ukuran baju, nomor sepatu, atau varian lain langsung pada setiap barang.
@@ -192,6 +194,33 @@ docker build -t ainet-merchandise:test .
 ```
 
 Test otomatis memeriksa katalog, deskripsi multiline, kategori, galeri lima foto dan urutannya, pengaturan identitas/domain/WhatsApp, status order, Work Order dan PDF vendor, pengalihan WhatsApp, login reverse proxy, ubah password, hapus order, backup, restore, serta perlindungan path paket backup.
+
+## Panduan awal persediaan dan akses katalog
+
+1. Buat cadangan sebelum update. Coba terlebih dahulu dengan salinan database dan unggahan, bukan volume produksi.
+2. Di **Admin → Persediaan**, pilih produk, buat satu SKU untuk setiap kombinasi warna/ukuran, dan catat saldo awal melalui **Barang masuk / saldo awal**. Produk tanpa variasi cukup satu SKU. Aktifkan stok produk setelah SKU siap. Produk yang belum diaktifkan tetap memakai alur lama.
+3. Stok tersedia adalah stok fisik dikurangi reservasi. Sisa pesanan menjadi PO jika diizinkan dan dikonfirmasi pemesan. Masukkan sisa PO ke Work Order, terima per SKU, lalu catat serah terima dari detail pesanan. Penerimaan dialokasikan ke PO tertua; status vendor dan serah terima pelanggan terpisah. Work Order stok selesai setelah semua jumlah vendor diterima. Item stok tidak dapat dihapus dari riwayat.
+4. Atur kata kunci melalui **Admin → Pengaturan → Akses katalog**. Akses pengunjung bertahan 24 jam dan kata kunci baru mencabut sesi lama. Gunakan HTTPS di produksi dan jangan cache API, respons PDF atau unggahan yang sekarang dikunci. Jika proxy pernah menyimpan unggahan lama, bersihkan cache tersebut saat mengaktifkan fitur.
+
+Harga perolehan dihitung rata-rata tertimbang per SKU. Biaya pada serah terima disimpan untuk estimasi margin kotor; laporan ini bukan catatan pembayaran. Opname menolak jumlah di bawah reservasi aktif dan perubahan berdasarkan saldo yang sudah kedaluwarsa.
+
+### Uji staging Ubuntu
+
+Gunakan **backup yang sudah ada** dari **Admin → Pemeliharaan → Backup lengkap**. Simpan backup di Ubuntu; jangan kirim ke GitHub atau chat. Dari folder kandidat 2.0.0 yang sudah diverifikasi checksum-nya, jalankan:
+
+```bash
+sudo bash staging-ubuntu.sh /path/ke/backup-valid.merchbackup
+```
+
+Skrip memerlukan Docker Engine 28+, memakai container `axindo-store-staging`, volume Docker `axindo-store-staging-data`, dan hanya menerbitkan `127.0.0.1:18092`. Ia tidak memakai konfigurasi, container, dan volume produksi. Staging menghapus akun admin lama dari salinan, mengganti token PDF, menyamarkan identitas/kontak pemesan, vendor, dan catatan transaksi, serta menonaktifkan SSO dan tujuan WhatsApp lama. Foto, data produk, dan struktur transaksi tetap disalin; akses staging harus tetap terbatas. Password akun `staging` tampil satu kali di terminal dan tidak boleh dibagikan.
+
+Jika membuka dari PC dan akses SSH ke Ubuntu sudah tersedia, jalankan di PC:
+
+```bash
+ssh -N -L 18092:127.0.0.1:18092 axindo@192.168.1.50
+```
+
+Buka **http://127.0.0.1:18092/admin**. Jangan hubungkan staging ke domain atau reverse proxy produksi. Uji saldo awal satu SKU, checkout Ready + PO, penerimaan WO sebagian, serah terima, dan penguncian katalog dari jendela privat. Hentikan staging setelah uji dengan `sudo docker stop axindo-store-staging`; salinan staging tetap ada agar bisa dilanjutkan. Inventaris salinan uji tidak boleh dipulihkan ke produksi.
 
 ## Rilis image
 

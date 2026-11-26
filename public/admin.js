@@ -2,12 +2,28 @@
   const state = { admin: null, orders: [], workOrders: [], selectedOrderNumbers: new Set(), products: [], pops: [], categories: [], settings: null, config: null, tab: "orders", orderStatus: "PROCESSING", editingProduct: null, productImages: [] };
   let draggedImageKey = null;
   let popupLogin = null;
+  let stockReport = { variants: [], movements: [], accounting: { sales: 0, cost: 0 } };
   const el = (id) => document.getElementById(id);
   const rupiah = (value) => `Rp${new Intl.NumberFormat("id-ID").format(value)}`;
   const dateTime = (value) => new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
   const icon = (category) => category.toLowerCase().includes("sepatu") ? "👟" : category.toLowerCase().includes("akses") || category.toLowerCase().includes("mug") ? "☕" : "👕";
   const isUnassignedProcessingOrder = (order) => order.status === "PROCESSING" && !order.workOrder;
+  const managed = (order) => order.items.some((item) => item.stock);
+  const hasUnassignedPo = (order) => order.items.some((item) => item.stock?.po > 0 && !item.stock.vendor.length);
+  const canSelectOrder = (order) => isUnassignedProcessingOrder(order) && (!managed(order) || hasUnassignedPo(order));
+  function orderBucket(order) {
+    if (order.status === "DONE") return "DONE";
+    if (!isUnassignedProcessingOrder(order)) return "WORK_ORDERS";
+    if (!managed(order) || order.items.some((item) => !item.stock || item.stock.ready > 0)) return "PROCESSING";
+    return hasUnassignedPo(order) ? "PO" : "WORK_ORDERS";
+  }
+  function stockSummary(item) {
+    const stock = item.stock;
+    return stock ? `Ready ${stock.ready} · PO ${stock.po} · Diserahkan ${stock.delivered}${stock.cancelled ? ` · Batal ${stock.cancelled}` : ""}` : "";
+  }
+  const orderLabel = (order) => order.status === "DONE" ? (managed(order) && order.items.every((item) => item.stock?.cancelled === item.quantity) ? "Dibatalkan" : "Selesai") : managed(order) && order.items.some((item) => item.stock?.po > 0) ? "Ada PO" : "On proses";
+  const json = (method, body) => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
   function visual(item, compact = false) {
     const imageUrl = item.images?.[0]?.url || item.imageUrl;
@@ -211,13 +227,14 @@
     ]);
     state.orders = orders.orders;
     state.workOrders = workOrders.workOrders;
-    const selectable = new Set(state.orders.filter(isUnassignedProcessingOrder).map((order) => order.orderNumber));
+    const selectable = new Set(state.orders.filter(canSelectOrder).map((order) => order.orderNumber));
     state.selectedOrderNumbers = new Set([...state.selectedOrderNumbers].filter((number) => selectable.has(number)));
     state.products = products.products;
     state.pops = pops.pops;
     state.categories = categories.categories;
     applySettings(settings.settings);
     renderAll();
+    if (state.tab === "inventory") await loadInventory();
   }
 
   function renderOrders() {
@@ -230,7 +247,8 @@
     el("metric-orders").textContent = state.orders.length;
     el("metric-today").textContent = state.orders.filter((order) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(order.createdAt)) === today).length;
     el("metric-month").textContent = rupiah(state.orders.filter((order) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).format(new Date(order.createdAt)).replace("/", "-") === month).reduce((sum, order) => sum + order.total, 0));
-    el("processing-count").textContent = state.orders.filter(isUnassignedProcessingOrder).length;
+    el("processing-count").textContent = state.orders.filter((order) => orderBucket(order) === "PROCESSING").length;
+    el("po-count").textContent = state.orders.filter((order) => orderBucket(order) === "PO").length;
     el("work-order-count").textContent = state.workOrders.filter((workOrder) => workOrder.status === "VENDOR_PROCESSING").length;
     el("done-count").textContent = state.orders.filter((order) => order.status === "DONE").length;
     document.querySelectorAll("[data-order-status]").forEach((button) => {
@@ -240,13 +258,12 @@
     });
     if (isWorkOrderView) return renderWorkOrders();
     const orders = state.orders.filter((order) => {
-      if (state.orderStatus === "PROCESSING" && !isUnassignedProcessingOrder(order)) return false;
-      return order.status === state.orderStatus && (!query || [order.orderNumber, order.customerName, order.popName, order.whatsapp, order.note, order.workOrder?.workOrderNumber].some((value) => String(value || "").toLowerCase().includes(query)));
+      return orderBucket(order) === state.orderStatus && (!query || [order.orderNumber, order.customerName, order.popName, order.whatsapp, order.note, order.workOrder?.workOrderNumber, ...order.items.flatMap((item) => item.stock?.workOrders || [])].some((value) => String(value || "").toLowerCase().includes(query)));
     });
-    const processing = state.orderStatus === "PROCESSING";
+    const processing = ["PROCESSING", "PO"].includes(state.orderStatus);
     el("work-order-selection").classList.toggle("hidden", !processing);
     document.querySelector(".select-order-column")?.classList.toggle("selection-disabled", !processing);
-    const visibleSelectable = orders.filter((order) => !order.workOrder);
+    const visibleSelectable = orders.filter(canSelectOrder);
     const allSelected = visibleSelectable.length > 0 && visibleSelectable.every((order) => state.selectedOrderNumbers.has(order.orderNumber));
     el("select-all-orders").checked = allSelected;
     el("select-all-orders").indeterminate = !allSelected && visibleSelectable.some((order) => state.selectedOrderNumbers.has(order.orderNumber));
@@ -254,11 +271,26 @@
     el("selected-order-count").textContent = `${state.selectedOrderNumbers.size} pesanan dipilih`;
     el("create-work-order").disabled = state.selectedOrderNumbers.size === 0;
     el("orders-body").innerHTML = orders.map((order) => `<tr>
-      <td class="select-order-cell">${processing ? `<input type="checkbox" data-select-order="${escapeHtml(order.orderNumber)}"${state.selectedOrderNumbers.has(order.orderNumber) ? " checked" : ""}${order.workOrder ? " disabled" : ""} aria-label="Pilih ${escapeHtml(order.orderNumber)}">` : ""}</td><td><b>${escapeHtml(order.orderNumber)}</b>${order.workOrder ? `<button type="button" class="work-order-link" data-work-order="${escapeHtml(order.workOrder.workOrderNumber)}">${escapeHtml(order.workOrder.workOrderNumber)}</button>` : ""}</td><td>${escapeHtml(dateTime(order.createdAt))}</td>
+      <td class="select-order-cell">${processing && canSelectOrder(order) ? `<input type="checkbox" data-select-order="${escapeHtml(order.orderNumber)}"${state.selectedOrderNumbers.has(order.orderNumber) ? " checked" : ""} aria-label="Pilih ${escapeHtml(order.orderNumber)}">` : ""}</td><td><b>${escapeHtml(order.orderNumber)}</b>${orderWorkLinks(order)}</td><td>${escapeHtml(dateTime(order.createdAt))}</td>
       <td><strong>${escapeHtml(order.customerName)}</strong><small>${escapeHtml(order.whatsapp)}</small></td><td>${escapeHtml(order.popName)}</td>
-      <td>${order.items.map((item) => `<small>${escapeHtml(item.productName)}${item.variant ? ` · ${escapeHtml(item.variantLabel || "Ukuran")}: ${escapeHtml(item.variant)}` : ""} × ${item.quantity}</small>`).join("")}</td>
-      <td><b>${rupiah(order.total)}</b></td><td><span class="order-status-badge ${order.status === "DONE" ? "done" : "processing"}">${order.status === "DONE" ? "Selesai" : "On proses"}</span>${order.completedAt ? `<small>${escapeHtml(dateTime(order.completedAt))}</small>` : ""}</td><td><span class="table-actions"><button class="table-action" data-order="${order.orderNumber}">Detail</button>${order.workOrder ? "" : order.status === "DONE" ? `<button class="table-action" data-order-status-change="PROCESSING" data-order-number="${order.orderNumber}">Buka kembali</button>` : `<button class="table-action done-action" data-order-status-change="DONE" data-order-number="${order.orderNumber}">✓ Selesai</button>`}${order.workOrder ? "" : `<button class="table-action danger-text" data-delete-order="${order.orderNumber}">Hapus</button>`}</span></td>
-    </tr>`).join("") || `<tr><td colspan="9" class="empty-table">Belum ada pesanan ${state.orderStatus === "DONE" ? "selesai" : "yang sedang diproses"}.</td></tr>`;
+      <td>${order.items.map((item) => `<small>${escapeHtml(item.productName)}${item.variant ? ` · ${escapeHtml(item.variantLabel || "Ukuran")}: ${escapeHtml(item.variant)}` : ""} × ${item.quantity}${item.stock ? `<br>${stockSummary(item)}` : ""}</small>`).join("")}</td>
+      <td><b>${rupiah(order.total)}</b></td><td><span class="order-status-badge ${order.status === "DONE" ? "done" : "processing"}">${orderLabel(order)}</span>${order.completedAt ? `<small>${escapeHtml(dateTime(order.completedAt))}</small>` : ""}</td><td><span class="table-actions"><button class="table-action" data-order="${order.orderNumber}">Detail</button>${legacyOrderActions(order)}</span></td>
+    </tr>`).join("") || `<tr><td colspan="9" class="empty-table">Tidak ada pesanan untuk tab ini.</td></tr>`;
+  }
+
+  function orderWorkLinks(order) {
+    const numbers = new Set([order.workOrder?.workOrderNumber, ...order.items.flatMap((item) => item.stock?.workOrders || [])].filter(Boolean));
+    return [...numbers].map((number) => `<button type="button" class="work-order-link" data-work-order="${escapeHtml(number)}">${escapeHtml(number)}</button>`).join("");
+  }
+
+  function legacyOrderActions(order) {
+    const number = escapeHtml(order.orderNumber);
+    if (order.workOrder) return "";
+    if (managed(order)) {
+      return order.status !== "DONE" && order.items.some((item) => !item.stock) && !order.items.some((item) => item.stock && item.stock.ready + item.stock.po > 0)
+        ? `<button class="table-action done-action" data-order-status-change="DONE" data-order-number="${number}">Selesaikan item lama</button>` : "";
+    }
+    return (order.status === "DONE" ? `<button class="table-action" data-order-status-change="PROCESSING" data-order-number="${number}">Buka kembali</button>` : `<button class="table-action done-action" data-order-status-change="DONE" data-order-number="${number}">✓ Selesai</button>`) + `<button class="table-action danger-text" data-delete-order="${number}">Hapus</button>`;
   }
 
   function renderWorkOrders() {
@@ -312,17 +344,99 @@
 
   function switchTab(tab) {
     state.tab = tab;
-    const titles = { orders: "Daftar pesanan", products: "Pengelolaan barang", settings: "Pengaturan aplikasi", maintenance: "Pemeliharaan data" };
+    const titles = { orders: "Daftar pesanan", products: "Pengelolaan barang", inventory: "Persediaan", settings: "Pengaturan aplikasi", maintenance: "Pemeliharaan data" };
     document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
     document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
     el(`${tab}-tab`).classList.remove("hidden");
     el("page-title").textContent = titles[tab];
+    if (tab === "inventory") loadInventory().catch((error) => message(error.message, "error"));
   }
 
   function switchSettingsSection(section) {
     document.querySelectorAll("[data-settings-section]").forEach((button) => button.classList.toggle("active", button.dataset.settingsSection === section));
     document.querySelectorAll(".settings-section").forEach((panel) => panel.classList.add("hidden"));
     el(`${section}-settings`).classList.remove("hidden");
+    if (section === "catalog-access") loadCatalogAccess().catch((error) => message(error.message, "error"));
+  }
+
+  async function loadCatalogAccess() {
+    const config = await api("/api/admin/catalog-access");
+    const fields = el("catalog-access-form").elements;
+    fields.enabled.checked = config.enabled;
+    fields.showQuantity.checked = config.showQuantity;
+  }
+
+  const option = (value, label) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
+  function setOptions(select, entries, fallback = "") {
+    const previous = select.value;
+    select.innerHTML = entries.map(([value, label]) => option(value, label)).join("");
+    if ([...select.options].some((entry) => entry.value === previous)) select.value = previous;
+    else if (fallback) select.value = fallback;
+  }
+
+  function renderVariantForm(resetFields = true) {
+    const form = el("inventory-variant"), fields = form.elements;
+    const product = state.products.find((item) => item.id === fields.product.value);
+    const variants = stockReport.variants.filter((row) => row.product_id === product?.id);
+    setOptions(fields.variant, [["", "Tambah varian"], ...variants.map((row) => [row.id, `${row.sku} · ${row.label}${row.active ? "" : " (nonaktif)"}`])]);
+    const current = variants.find((row) => row.id === fields.variant.value);
+    if (resetFields) {
+      for (const name of ["sku", "label", "color", "size", "eta", "minimum", "cost", "price"]) {
+        fields[name].value = current?.[name] ?? ({ minimum: 0, cost: 0, price: product?.price ?? "" })[name] ?? "";
+      }
+      fields.allowPo.checked = Boolean(current?.allow_po);
+      fields.active.checked = current ? Boolean(current.active) : true;
+    }
+    fields.cost.readOnly = Boolean(current?.physical);
+    const active = variants.some((row) => row.managed);
+    el("inventory-enable").disabled = active || !variants.some((row) => row.active);
+    el("inventory-product-note").textContent = active ? "Pengelolaan stok aktif pada katalog." : "Siapkan varian dan saldo awal, lalu aktifkan stok untuk produk ini.";
+  }
+
+  function renderMovementForm() {
+    const fields = el("inventory-movement").elements;
+    const receipt = fields.kind.value === "RECEIPT";
+    const variant = stockReport.variants.find((row) => row.id === fields.variantId.value);
+    el("receipt-fields").classList.toggle("hidden", !receipt);
+    for (const name of ["cost", "supplier", "workOrder"]) fields[name].disabled = !receipt;
+    fields.reference.required = receipt;
+    fields.note.required = !receipt;
+    fields.quantity.min = receipt ? 1 : 0;
+    el("inventory-qty-label").textContent = receipt ? "Jumlah masuk" : "Jumlah fisik hasil hitung";
+    el("inventory-movement-note").textContent = variant ? `Sistem: ${variant.physical} fisik · ${variant.reserved} dipesan · ${variant.pending} PO` : "Tambahkan varian aktif terlebih dahulu.";
+    setOptions(fields.workOrder, [["", "Tidak terkait Work Order"], ...state.workOrders.filter((work) => work.status === "VENDOR_PROCESSING" && work.inventory?.some((line) => line.variantId === variant?.id && line.target > line.received)).map((work) => [work.workOrderNumber, `${work.workOrderNumber} · ${work.vendorName}`])]);
+  }
+
+  function renderStockReport() {
+    const query = el("inventory-search").value.trim().toLowerCase();
+    const filter = (...values) => !query || values.some((v) => String(v || "").toLowerCase().includes(query));
+    const value = stockReport.variants.reduce((total, row) => total + row.physical * row.cost, 0);
+    const low = stockReport.variants.filter((row) => row.active && row.managed && row.product_active && row.physical - row.reserved <= row.minimum).length;
+    const po = stockReport.variants.reduce((total, row) => total + row.pending, 0);
+    el("inventory-metrics").innerHTML = `<article><span>Nilai persediaan</span><strong>${rupiah(value)}</strong></article><article><span>Stok menipis / habis</span><strong>${low} SKU</strong><span>${po} unit PO menunggu</span></article><article><span>Estimasi margin barang diserahkan</span><strong>${rupiah(stockReport.accounting.sales - stockReport.accounting.cost)}</strong><span>Penjualan ${rupiah(stockReport.accounting.sales)} · HPP ${rupiah(stockReport.accounting.cost)}</span></article>`;
+    el("inventory-balances").innerHTML = stockReport.variants.filter((v) => filter(v.sku, v.product_name, v.label)).map((v) =>
+      `<tr><td><b>${escapeHtml(v.sku)}</b></td><td>${escapeHtml(v.product_name)}<small>${escapeHtml(v.label)}${v.active ? "" : " · Nonaktif"}${v.managed ? "" : " · Persiapan"}</small></td><td>${v.physical}</td><td>${v.reserved}</td><td><b>${v.physical - v.reserved}</b>${v.physical - v.reserved <= v.minimum ? "<small>Stok rendah</small>" : ""}</td><td>${v.pending}</td><td>${rupiah(v.cost)}</td><td>${rupiah(v.price)}</td></tr>`).join("") || '<tr><td colspan="8" class="empty-table">Belum ada SKU yang cocok.</td></tr>';
+    const kinds = { RECEIPT: "Barang masuk", COUNT: "Opname", DELIVER: "Serah terima", CANCEL: "Pembatalan" };
+    el("inventory-movements").innerHTML = stockReport.movements.filter((m) => filter(m.sku)).map((m) =>
+      `<tr><td>${escapeHtml(dateTime(m.created_at))}</td><td>${escapeHtml(m.sku)}</td><td>${kinds[m.kind] || "Mutasi"} · ${m.qty > 0 ? "+" : ""}${m.qty}<small>${rupiah(m.unit_cost)} / unit</small></td><td>${m.before_qty} → ${m.after_qty}</td><td>${escapeHtml(m.reference)}${m.event_on ? `<small>Tanggal: ${escapeHtml(m.event_on)}</small>` : ""}${m.work_order_number ? `<small>${escapeHtml(m.work_order_number)}</small>` : ""}</td><td>${escapeHtml(m.actor)}</td><td>${escapeHtml(m.note)}</td></tr>`).join("") || '<tr><td colspan="7" class="empty-table">Belum ada mutasi.</td></tr>';
+  }
+
+  async function loadInventory() {
+    stockReport = await api("/api/admin/inventory");
+    const products = el("inventory-variant").elements.product;
+    setOptions(products, [["", "Pilih produk"], ...state.products.map((item) => [item.id, item.name])], state.products[0]?.id);
+    setOptions(el("inventory-movement").elements.variantId, [["", "Pilih SKU"], ...stockReport.variants.filter((row) => row.active).map((row) => [row.id, `${row.sku} · ${row.product_name} / ${row.label}`])]);
+    renderVariantForm();
+    renderMovementForm();
+    renderStockReport();
+  }
+
+  async function onSave(form, action) {
+    const buttons = [...form.querySelectorAll('button[type="submit"]')].filter((button) => !button.disabled);
+    buttons.forEach((button) => { button.disabled = true; });
+    try { await action(); }
+    catch (error) { message(error.message, "error"); }
+    finally { buttons.forEach((button) => { button.disabled = false; }); }
   }
 
   function clearStagedProductImages() {
@@ -387,10 +501,11 @@
   }
 
   function showOrder(order) {
+    if (!order) return;
     el("order-modal-title").textContent = order.orderNumber;
     el("order-detail").innerHTML = `<div class="order-info"><div><span>Nama pemesan</span><strong>${escapeHtml(order.customerName)}</strong></div><div><span>Asal PoP</span><strong>${escapeHtml(order.popName)}</strong></div><div><span>WhatsApp</span><strong>${escapeHtml(order.whatsapp)}</strong></div><div><span>Tanggal order</span><strong>${escapeHtml(dateTime(order.createdAt))}</strong></div><div><span>Status</span><strong>${order.status === "DONE" ? "Selesai" : "On proses"}</strong></div>${order.workOrder ? `<div><span>Work Order</span><strong>${escapeHtml(order.workOrder.workOrderNumber)}</strong></div>` : ""}${order.completedAt ? `<div><span>Selesai pada</span><strong>${escapeHtml(dateTime(order.completedAt))}</strong></div>` : ""}${order.note ? `<div class="order-note"><span>Catatan</span><strong>${escapeHtml(order.note)}</strong></div>` : ""}</div>
-      <div>${order.items.map((item) => `<div class="order-item-detail">${visual(item, true)}<div><strong>${escapeHtml(item.productName)}</strong><small>${item.variant ? `${escapeHtml(item.variantLabel || "Ukuran")}: ${escapeHtml(item.variant)}` : "Tanpa ukuran"} · ${item.quantity} pcs × ${rupiah(item.unitPrice)}</small></div><b>${rupiah(item.subtotal)}</b></div>`).join("")}</div>
-      <div class="order-total-detail"><span>Total nominal</span><strong>${rupiah(order.total)}</strong></div><div class="modal-actions">${order.workOrder ? "" : order.status === "DONE" ? `<button class="button secondary" type="button" data-order-status-change="PROCESSING" data-order-number="${escapeHtml(order.orderNumber)}">Buka kembali</button>` : `<button class="button primary" type="button" data-order-status-change="DONE" data-order-number="${escapeHtml(order.orderNumber)}">✓ Tandai selesai</button>`}${order.workOrder ? "" : `<button class="button danger" type="button" data-delete-order="${escapeHtml(order.orderNumber)}">Hapus pesanan</button>`}<a class="button primary order-download" href="/api/orders/${encodeURIComponent(order.orderNumber)}/pdf">↓ Download PDF</a></div>`;
+      <div>${order.items.map((item) => `<div class="order-item-detail">${visual(item, true)}<div><strong>${escapeHtml(item.productName)}</strong><small>${item.variant ? `${escapeHtml(item.variantLabel || "Ukuran")}: ${escapeHtml(item.variant)}` : "Tanpa ukuran"} · ${item.quantity} pcs × ${rupiah(item.unitPrice)}</small>${item.stock ? `<small>${stockSummary(item)}</small>${item.stock.ready + item.stock.po > 0 ? `<form class="inventory-inline" data-fulfill-item="${escapeHtml(item.id)}" data-number="${escapeHtml(order.orderNumber)}"><label>Jumlah<input name="quantity" type="number" min="1" max="${item.stock.ready + item.stock.po}" required value="1"></label><label>Catatan / alasan batal<input name="note" maxlength="500"></label><button class="table-action" type="submit" value="DELIVER"${!item.stock.ready ? " disabled" : ""}>Serah terima</button><button class="table-action danger-text" type="submit" value="CANCEL">Batalkan jumlah ini</button></form>` : ""}` : ""}</div><b>${rupiah(item.subtotal)}</b></div>`).join("")}</div>
+      <div class="order-total-detail"><span>Total nominal awal</span><strong>${rupiah(order.total)}</strong></div><div class="modal-actions">${legacyOrderActions(order)}<a class="button primary order-download" href="/api/orders/${encodeURIComponent(order.orderNumber)}/pdf">↓ Download PDF</a></div>`;
     el("order-modal").classList.remove("hidden");
   }
 
@@ -402,9 +517,10 @@
     const aggregated = new Map();
     for (const order of orders) {
       for (const item of order.items) {
-        const key = [item.productId || "", item.sku, item.variantLabel || "", item.variant || ""].join("\u0000");
+        if (managed(order) && (!item.stock?.po || item.stock.vendor.length)) continue;
+        const key = item.stock?.variantId || [item.productId || "", item.sku, item.variantLabel || "", item.variant || ""].join("\u0000");
         const current = aggregated.get(key) || { sku: item.sku, productName: item.productName, variantLabel: item.variantLabel, variant: item.variant, quantity: 0 };
-        current.quantity += item.quantity;
+        current.quantity += item.stock?.po ?? item.quantity;
         aggregated.set(key, current);
       }
     }
@@ -414,6 +530,7 @@
   function openCreateWorkOrder() {
     const orders = selectedOrders();
     if (!orders.length) return message("Pilih minimal satu pesanan On proses.", "error");
+    if (orders.some(managed) && orders.some((order) => !managed(order))) return message("Pisahkan Work Order pesanan lama dari Work Order stok/PO.", "error");
     const form = el("work-order-form");
     form.reset();
     const items = aggregateWorkOrderItems(orders);
@@ -422,11 +539,13 @@
   }
 
   function showWorkOrder(workOrder) {
+    if (!workOrder) return;
     el("work-order-modal-title").textContent = workOrder.workOrderNumber;
     el("work-order-detail").innerHTML = `<div class="order-info"><div><span>Vendor</span><strong>${escapeHtml(workOrder.vendorName)}</strong></div><div><span>Tanggal dibuat</span><strong>${escapeHtml(dateTime(workOrder.createdAt))}</strong></div><div><span>Status</span><strong>${workOrder.status === "DONE" ? "Selesai" : "Diproses vendor"}</strong></div>${workOrder.completedAt ? `<div><span>Selesai pada</span><strong>${escapeHtml(dateTime(workOrder.completedAt))}</strong></div>` : ""}${workOrder.note ? `<div class="order-note"><span>Catatan vendor</span><strong>${escapeHtml(workOrder.note)}</strong></div>` : ""}</div>
-      <div class="work-order-source"><span class="field-label">Order sumber</span>${workOrder.orders.map((order) => `<div><b>${escapeHtml(order.orderNumber)}</b><span>${escapeHtml(order.customerName)} · ${escapeHtml(order.popName)}</span></div>`).join("")}</div>
+      <div class="work-order-source"><span class="field-label">Order sumber</span>${workOrder.orders.map((order) => `<div><button class="table-action" type="button" data-source-order="${escapeHtml(order.orderNumber)}">${escapeHtml(order.orderNumber)}</button><span>${escapeHtml(order.customerName)} · ${escapeHtml(order.popName)}</span></div>`).join("")}</div>
       <div class="work-order-detail-items"><span class="field-label">Total kebutuhan per item</span>${workOrder.items.map((item) => `<div class="work-order-preview-item"><div><strong>${escapeHtml(item.productName)}</strong><small>SKU: ${escapeHtml(item.sku)}${item.variant ? ` · ${escapeHtml(item.variantLabel || "Varian")}: ${escapeHtml(item.variant)}` : ""}</small></div><b>${item.quantity} pcs</b></div>`).join("")}</div>
-      <div class="modal-actions">${workOrder.status === "DONE" ? `<button class="button secondary" type="button" data-work-order-status="VENDOR_PROCESSING" data-work-order-number="${escapeHtml(workOrder.workOrderNumber)}">Buka kembali</button>` : `<button class="button primary" type="button" data-work-order-status="DONE" data-work-order-number="${escapeHtml(workOrder.workOrderNumber)}">✓ Tandai selesai</button><button class="button danger" type="button" data-delete-work-order="${escapeHtml(workOrder.workOrderNumber)}">Batalkan WO</button>`}<a class="button primary order-download" href="/api/admin/work-orders/${encodeURIComponent(workOrder.workOrderNumber)}/pdf">↓ Download PDF</a></div>`;
+      ${workOrder.inventory?.length ? `<div class="work-order-detail-items"><span class="field-label">Penerimaan vendor</span>${workOrder.inventory.map((line) => `<div class="work-order-preview-item"><b>${escapeHtml(line.sku)}</b><span>${line.received} / ${line.target} pcs diterima</span></div>`).join("")}</div>` : ""}
+      <div class="modal-actions">${workOrder.inventory?.length ? (workOrder.status !== "DONE" ? `<button class="button secondary" type="button" data-receive-wo="${escapeHtml(workOrder.workOrderNumber)}">Catat barang masuk</button>${workOrder.inventory.every((line) => !line.received) ? `<button class="button danger" type="button" data-delete-work-order="${escapeHtml(workOrder.workOrderNumber)}">Batalkan WO</button>` : ""}` : "") : workOrder.status === "DONE" ? `<button class="button secondary" type="button" data-work-order-status="VENDOR_PROCESSING" data-work-order-number="${escapeHtml(workOrder.workOrderNumber)}">Buka kembali</button>` : `<button class="button primary" type="button" data-work-order-status="DONE" data-work-order-number="${escapeHtml(workOrder.workOrderNumber)}">✓ Tandai selesai</button><button class="button danger" type="button" data-delete-work-order="${escapeHtml(workOrder.workOrderNumber)}">Batalkan WO</button>`}<a class="button primary order-download" href="/api/admin/work-orders/${encodeURIComponent(workOrder.workOrderNumber)}/pdf">↓ Download PDF</a></div>`;
     el("work-order-modal").classList.remove("hidden");
   }
 
@@ -482,7 +601,7 @@
   });
   el("select-all-orders").addEventListener("change", (event) => {
     const query = el("order-search").value.trim().toLowerCase();
-    const available = state.orders.filter((order) => order.status === "PROCESSING" && !order.workOrder && (!query || [order.orderNumber, order.customerName, order.popName, order.whatsapp, order.note].some((value) => String(value || "").toLowerCase().includes(query))));
+    const available = state.orders.filter((order) => orderBucket(order) === state.orderStatus && canSelectOrder(order) && (!query || [order.orderNumber, order.customerName, order.popName, order.whatsapp, order.note, ...order.items.flatMap((item) => item.stock?.workOrders || [])].some((value) => String(value || "").toLowerCase().includes(query))));
     for (const order of available) {
       if (event.currentTarget.checked) state.selectedOrderNumbers.add(order.orderNumber);
       else state.selectedOrderNumbers.delete(order.orderNumber);
@@ -558,6 +677,74 @@
     const button = event.target.closest("[data-delete-order]");
     if (button) removeOrder(button.dataset.deleteOrder);
   });
+  el("order-detail").addEventListener("submit", (event) => {
+    const form = event.target.closest("[data-fulfill-item]");
+    if (!form) return;
+    event.preventDefault();
+    const action = event.submitter?.value;
+    if (!["DELIVER", "CANCEL"].includes(action) || !confirm(action === "DELIVER" ? "Catat barang sudah diserahkan?" : "Batalkan jumlah ini? Riwayat akan tetap disimpan.")) return;
+    onSave(form, async () => {
+      const { order } = await api(`/api/admin/inventory/orders/${encodeURIComponent(form.dataset.number)}/items/${encodeURIComponent(form.dataset.fulfillItem)}`,
+        json("POST", { action, quantity: form.elements.quantity.value, note: form.elements.note.value }));
+      await loadAll();
+      showOrder(order);
+      message(action === "DELIVER" ? "Serah terima dicatat." : "Jumlah dibatalkan dan stok disesuaikan.");
+    });
+  });
+  el("catalog-access-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget, fields = form.elements;
+    onSave(form, async () => {
+      await api("/api/admin/catalog-access", json("PUT", { enabled: fields.enabled.checked, keyword: fields.keyword.value, showQuantity: fields.showQuantity.checked }));
+      fields.keyword.value = "";
+      message("Pengaturan akses katalog disimpan.");
+    });
+  });
+  el("inventory-refresh").addEventListener("click", () => loadAll().catch((error) => message(error.message, "error")));
+  el("inventory-search").addEventListener("input", renderStockReport);
+  el("inventory-variant").elements.product.addEventListener("change", () => {
+    el("inventory-variant").elements.variant.value = "";
+    renderVariantForm();
+  });
+  el("inventory-variant").elements.variant.addEventListener("change", () => renderVariantForm());
+  el("inventory-variant").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget, fields = form.elements;
+    onSave(form, async () => {
+      const data = Object.fromEntries(new FormData(form));
+      const { variant } = await api(`/api/admin/inventory/products/${encodeURIComponent(fields.product.value)}/variant`,
+        json("PUT", { ...data, id: data.variant, active: fields.active.checked, allowPo: fields.allowPo.checked }));
+      await loadInventory();
+      fields.variant.value = variant.id;
+      renderVariantForm();
+      message("Varian disimpan.");
+    });
+  });
+  el("inventory-enable").addEventListener("click", async () => {
+    if (!confirm("Aktifkan stok untuk produk ini? Pilihan pada katalog akan mengikuti varian SKU yang aktif.")) return;
+    const button = el("inventory-enable");
+    button.disabled = true;
+    try {
+      await api(`/api/admin/inventory/products/${encodeURIComponent(el("inventory-variant").elements.product.value)}/enable`, json("POST", {}));
+      await loadInventory();
+      message("Stok produk diaktifkan.");
+    } catch (error) { renderVariantForm(false); message(error.message, "error"); }
+  });
+  for (const name of ["kind", "variantId"]) el("inventory-movement").elements[name].addEventListener("change", renderMovementForm);
+  el("inventory-movement").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = Object.fromEntries(new FormData(form));
+    const variant = stockReport.variants.find((row) => row.id === data.variantId);
+    if (!variant || !confirm(data.kind === "COUNT" ? `Catat stok fisik dari ${variant.physical} menjadi ${data.quantity} pcs?` : `Catat ${data.quantity} pcs barang masuk?`)) return;
+    onSave(form, async () => {
+      await api("/api/admin/inventory/movements", json("POST", { ...data, expectedPhysical: variant.physical }));
+      form.elements.quantity.value = "";
+      form.elements.note.value = "";
+      await loadAll();
+      message("Pencatatan stok disimpan.");
+    });
+  });
   el("work-order-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -582,6 +769,24 @@
     if (button) showWorkOrder(state.workOrders.find((workOrder) => workOrder.workOrderNumber === button.dataset.workOrder));
   });
   el("work-order-detail").addEventListener("click", (event) => {
+    const source = event.target.closest("[data-source-order]");
+    if (source) { closeModal("work-order-modal"); return showOrder(state.orders.find((order) => order.orderNumber === source.dataset.sourceOrder)); }
+    const receive = event.target.closest("[data-receive-wo]");
+    if (receive) {
+      closeModal("work-order-modal");
+      switchTab("inventory");
+      const work = state.workOrders.find((item) => item.workOrderNumber === receive.dataset.receiveWo);
+      loadInventory().then(() => {
+        const form = el("inventory-movement");
+        form.elements.kind.value = "RECEIPT";
+        form.elements.variantId.value = work.inventory.find((line) => line.received < line.target).variantId;
+        renderMovementForm();
+        form.elements.workOrder.value = work.workOrderNumber;
+        form.elements.supplier.value = work.vendorName;
+        form.scrollIntoView({ block: "start" });
+      }).catch((error) => message(error.message, "error"));
+      return;
+    }
     const status = event.target.closest("[data-work-order-status]");
     if (status) return changeWorkOrderStatus(status.dataset.workOrderNumber, status.dataset.workOrderStatus);
     const remove = event.target.closest("[data-delete-work-order]");

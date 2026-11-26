@@ -3,6 +3,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const bcrypt = require("bcryptjs");
+const inventory = require("./inventory");
 
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "..", "data"));
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads"));
@@ -175,6 +176,7 @@ function initDatabase() {
   if (!orderColumns.has("status")) db.exec("ALTER TABLE orders ADD COLUMN status TEXT NOT NULL DEFAULT 'PROCESSING'");
   if (!orderColumns.has("completed_at")) db.exec("ALTER TABLE orders ADD COLUMN completed_at TEXT");
   db.exec("CREATE INDEX IF NOT EXISTS idx_orders_status_created_at ON orders(status, created_at DESC)");
+  inventory.init(db);
 
   const timestamp = nowIso();
   const adminCount = db.prepare("SELECT COUNT(*) AS total FROM admins").get().total;
@@ -489,6 +491,38 @@ function updateSettings(input) {
   }
 }
 
+function resolveOrderItems(db, requestedItems, requireConfirmation) {
+    if (!requestedItems.length) throw new Error("Keranjang pesanan masih kosong.");
+    if (requestedItems.length > 50) throw new Error("Terlalu banyak jenis barang dalam satu pesanan.");
+    const tally = new Set();
+    return requestedItems.map((requested) => {
+      if (!requested || typeof requested !== "object") throw new Error("Baris pesanan tidak valid.");
+      const quantity = Number(requested.quantity);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) throw new Error("Jumlah barang harus 1 sampai 99.");
+      const row = db.prepare("SELECT * FROM products WHERE id = ? AND active = 1").get(String(requested.productId || ""));
+      if (!row) throw new Error("Salah satu barang tidak tersedia.");
+      const product = productRow(row);
+      const stock = inventory.resolve(db, product.id, requested, quantity, tally);
+      if (stock) {
+        if (requireConfirmation && (requested.expectedPo !== quantity - stock.ready || requested.expectedPrice !== stock.price)) {
+          throw new inventory.InputError("Stok atau harga berubah. Periksa ulang rincian keranjang sebelum mengirim pesanan.");
+        }
+        return { product, variant: stock.label, sku: stock.sku, price: stock.price, stock, quantity, subtotal: stock.price * quantity };
+      }
+      if (requested.variantId) throw new Error("Varian barang berubah. Muat ulang katalog.");
+      const variant = String(requested.variant || "").trim();
+      if (product.variants.length && !product.variants.includes(variant)) throw new Error(`Pilihan ${product.variantLabel || "varian"} untuk ${product.name} tidak valid.`);
+      if (!product.variants.length && variant) throw new Error(`${product.name} tidak memiliki pilihan ukuran/varian.`);
+      return { product, variant: variant || null, sku: product.sku, price: product.price, quantity, subtotal: product.price * quantity };
+    });
+}
+
+function quoteOrder(items) {
+  return resolveOrderItems(getDatabase(), items, false).map((item) => ({
+    price: item.price, ready: item.stock ? item.stock.ready : null, po: item.stock ? item.quantity - item.stock.ready : null,
+  }));
+}
+
 function createOrder(input) {
   const db = getDatabase();
   db.exec("BEGIN IMMEDIATE");
@@ -496,21 +530,7 @@ function createOrder(input) {
     const pop = db.prepare("SELECT * FROM pops WHERE id = ? AND active = 1").get(input.popId);
     if (!pop) throw new Error("PoP tidak valid atau sudah tidak aktif.");
 
-    const items = input.items.map((requested) => {
-      const row = db.prepare("SELECT * FROM products WHERE id = ? AND active = 1").get(requested.productId);
-      if (!row) throw new Error("Salah satu barang tidak tersedia.");
-      const product = productRow(row);
-      const variant = String(requested.variant || "").trim();
-      if (product.variants.length && !product.variants.includes(variant)) {
-        throw new Error(`Pilihan ${product.variantLabel || "varian"} untuk ${product.name} tidak valid.`);
-      }
-      if (!product.variants.length && variant) throw new Error(`${product.name} tidak memiliki pilihan ukuran/varian.`);
-      const quantity = Number(requested.quantity);
-      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) throw new Error("Jumlah barang harus 1 sampai 99.");
-      return { product, variant: variant || null, quantity, subtotal: product.price * quantity };
-    });
-    if (!items.length) throw new Error("Keranjang pesanan masih kosong.");
-    if (items.length > 50) throw new Error("Terlalu banyak jenis barang dalam satu pesanan.");
+    const items = resolveOrderItems(db, input.items, true);
 
     const day = jakartaDay();
     db.prepare(`
@@ -533,8 +553,10 @@ function createOrder(input) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const item of items) {
-      insertItem.run(id("itm"), orderId, item.product.id, item.product.sku, item.product.name,
-        item.product.variantLabel, item.variant, item.product.imageFilename, item.product.price, item.quantity, item.subtotal);
+      const itemId = id("itm");
+      insertItem.run(itemId, orderId, item.product.id, item.sku, item.product.name,
+        item.stock ? "Warna / ukuran" : item.product.variantLabel, item.variant, item.product.imageFilename, item.price, item.quantity, item.subtotal);
+      if (item.stock) inventory.addLine(db, itemId, item.stock);
     }
     db.exec("COMMIT");
     return getOrderByNumber(orderNumber, { includeToken: true });
@@ -557,6 +579,7 @@ function orderItems(orderId) {
     unitPrice: Number(row.unit_price),
     quantity: Number(row.quantity),
     subtotal: Number(row.subtotal),
+    stock: inventory.lineInfo(getDatabase(), row.id, Number(row.quantity)),
   }));
 }
 
@@ -602,6 +625,7 @@ function deleteOrder(orderNumber) {
   const db = getDatabase();
   const order = db.prepare("SELECT id FROM orders WHERE order_number = ?").get(orderNumber);
   if (!order) return false;
+  if (orderItems(order.id).some((item) => item.stock)) throw new Error("Pesanan persediaan tidak dapat dihapus. Batalkan sisa item agar riwayat stok tetap utuh.");
   const linked = db.prepare("SELECT 1 AS linked FROM work_order_orders WHERE order_id = ?").get(order.id);
   if (linked) throw new Error("Pesanan sudah masuk Work Order. Batalkan Work Order terlebih dahulu sebelum menghapus pesanan.");
   return db.prepare("DELETE FROM orders WHERE id = ?").run(order.id).changes > 0;
@@ -612,6 +636,10 @@ function updateOrderStatus(orderNumber, status) {
   const db = getDatabase();
   const order = db.prepare("SELECT id FROM orders WHERE order_number = ?").get(orderNumber);
   if (!order) return null;
+  const items = orderItems(order.id);
+  if (items.some((item) => item.stock) && (status !== "DONE" || items.some((item) => item.stock && item.stock.ready + item.stock.po > 0))) {
+    throw new inventory.InputError("Selesaikan atau batalkan setiap item stok melalui menu Serah terima.");
+  }
   const linked = db.prepare("SELECT 1 AS linked FROM work_order_orders WHERE order_id = ?").get(order.id);
   if (linked) throw new Error("Status pesanan yang masuk Work Order harus diubah melalui menu Work Order.");
   const completedAt = status === "DONE" ? nowIso() : null;
@@ -637,11 +665,12 @@ function workOrderItems(workOrderId) {
 
 function workOrderOrders(workOrderId) {
   return getDatabase().prepare(`
-    SELECT orders.* FROM work_order_orders
-    JOIN orders ON orders.id = work_order_orders.order_id
-    WHERE work_order_orders.work_order_id = ?
+    SELECT orders.* FROM orders WHERE id IN (
+      SELECT order_id FROM work_order_orders WHERE work_order_id = ?
+      UNION SELECT i.order_id FROM inventory_work_lines l JOIN order_items i ON i.id=l.item_id WHERE l.work_order_id=?
+    )
     ORDER BY orders.created_at, orders.order_number
-  `).all(workOrderId).map((row) => ({
+  `).all(workOrderId, workOrderId).map((row) => ({
     orderNumber: row.order_number,
     customerName: row.customer_name,
     popName: row.pop_name,
@@ -661,6 +690,7 @@ function workOrderRow(row) {
     completedAt: row.completed_at || null,
     orders: workOrderOrders(row.id),
     items: workOrderItems(row.id),
+    inventory: inventory.vendorTotals(getDatabase(), row.id),
   };
 }
 
@@ -708,16 +738,37 @@ function createWorkOrder(input) {
       INSERT INTO work_orders (id, work_order_number, vendor_name, note, status, created_at)
       VALUES (?, ?, ?, ?, 'VENDOR_PROCESSING', ?)
     `).run(workOrderId, workOrderNumber, input.vendorName, input.note || "", createdAt);
-    const linkOrder = db.prepare("INSERT INTO work_order_orders (work_order_id, order_id) VALUES (?, ?)");
-    for (const orderId of orderIds) linkOrder.run(workOrderId, orderId);
-
-    const aggregatedItems = db.prepare(`
+    const managedRows = db.prepare(`SELECT i.*, l.variant_id, i.quantity-l.reserved-l.delivered-l.cancelled AS pending
+      FROM order_items i JOIN inventory_lines l ON l.item_id=i.id WHERE i.order_id IN (${idPlaceholders})`).all(...orderIds);
+    let aggregatedItems;
+    if (managedRows.length) {
+      if (orderIds.some((orderId) => !managedRows.some((line) => line.order_id === orderId))) {
+        throw new inventory.InputError("Pisahkan Work Order pesanan lama dari Work Order stok/PO.");
+      }
+      const hasActive = db.prepare(`SELECT 1 FROM inventory_work_lines l JOIN work_orders w ON w.id=l.work_order_id
+        WHERE l.item_id=? AND w.status='VENDOR_PROCESSING'`);
+      const link = db.prepare("INSERT INTO inventory_work_lines (work_order_id,item_id,qty) VALUES (?,?,?)");
+      const groups = new Map();
+      for (const line of managedRows) {
+        if (line.pending <= 0 || hasActive.get(line.id)) continue;
+        link.run(workOrderId, line.id, line.pending);
+        const group = groups.get(line.variant_id) || { ...line, quantity: 0 };
+        group.quantity += line.pending;
+        groups.set(line.variant_id, group);
+      }
+      if (!groups.size) throw new inventory.InputError("Tidak ada sisa PO yang belum masuk Work Order.");
+      aggregatedItems = [...groups.values()];
+    } else {
+      const linkOrder = db.prepare("INSERT INTO work_order_orders (work_order_id, order_id) VALUES (?, ?)");
+      for (const orderId of orderIds) linkOrder.run(workOrderId, orderId);
+      aggregatedItems = db.prepare(`
       SELECT product_id, sku, product_name, variant_label, variant_value, SUM(quantity) AS quantity
       FROM order_items
       WHERE order_id IN (${idPlaceholders})
       GROUP BY COALESCE(product_id, ''), sku, product_name, COALESCE(variant_label, ''), COALESCE(variant_value, '')
       ORDER BY product_name COLLATE NOCASE, variant_value COLLATE NOCASE
-    `).all(...orderIds);
+      `).all(...orderIds);
+    }
     const insertItem = db.prepare(`
       INSERT INTO work_order_items
         (id, work_order_id, product_id, sku, product_name, variant_label, variant_value, quantity)
@@ -745,6 +796,7 @@ function updateWorkOrderStatus(workOrderNumber, status) {
       db.exec("ROLLBACK");
       return null;
     }
+    if (inventory.vendorTotals(db, workOrder.id).length) throw new inventory.InputError("Work Order persediaan selesai otomatis setelah seluruh barang diterima.");
     const completedAt = status === "DONE" ? nowIso() : null;
     db.prepare("UPDATE work_orders SET status = ?, completed_at = ? WHERE id = ?").run(status, completedAt, workOrder.id);
     db.prepare(`
@@ -764,6 +816,7 @@ function deleteWorkOrder(workOrderNumber) {
   const workOrder = db.prepare("SELECT id, status FROM work_orders WHERE work_order_number = ?").get(workOrderNumber);
   if (!workOrder) return false;
   if (workOrder.status === "DONE") throw new Error("Work Order selesai tidak dapat dibatalkan. Buka kembali Work Order terlebih dahulu.");
+  if (db.prepare("SELECT 1 FROM inventory_movements WHERE work_order_id=?").get(workOrder.id)) throw new Error("Work Order sudah memiliki penerimaan barang dan tidak bisa dibatalkan.");
   return db.prepare("DELETE FROM work_orders WHERE id = ?").run(workOrder.id).changes > 0;
 }
 
@@ -813,6 +866,7 @@ module.exports = {
   getSettings,
   updateSettings,
   createOrder,
+  quoteOrder,
   getOrderByNumber,
   listOrders,
   deleteOrder,
