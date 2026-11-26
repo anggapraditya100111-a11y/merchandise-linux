@@ -204,6 +204,24 @@ Test otomatis memeriksa katalog, deskripsi multiline, kategori, galeri lima foto
 
 Harga perolehan dihitung rata-rata tertimbang per SKU. Biaya pada serah terima disimpan untuk estimasi margin kotor; laporan ini bukan catatan pembayaran. Opname menolak jumlah di bawah reservasi aktif dan perubahan berdasarkan saldo yang sudah kedaluwarsa.
 
+### Uji staging Ubuntu
+
+Gunakan **backup yang sudah ada** dari **Admin → Pemeliharaan → Backup lengkap**. Simpan backup di Ubuntu; jangan kirim ke GitHub atau chat. Dari folder kandidat 2.0.0 yang sudah diverifikasi checksum-nya, jalankan:
+
+```bash
+sudo bash staging-ubuntu.sh /path/ke/backup-valid.merchbackup
+```
+
+Skrip memerlukan Docker Engine 28+, memakai container `axindo-store-staging`, volume Docker `axindo-store-staging-data`, dan hanya menerbitkan `127.0.0.1:18092`. Ia tidak memakai konfigurasi, container, dan volume produksi. Staging menghapus akun admin lama dari salinan, mengganti token PDF, menyamarkan identitas/kontak pemesan, vendor, dan catatan transaksi, serta menonaktifkan SSO dan tujuan WhatsApp lama. Foto, data produk, dan struktur transaksi tetap disalin; akses staging harus tetap terbatas. Password akun `staging` tampil satu kali di terminal dan tidak boleh dibagikan.
+
+Jika membuka dari PC dan akses SSH ke Ubuntu sudah tersedia, jalankan di PC:
+
+```bash
+ssh -N -L 18092:127.0.0.1:18092 axindo@192.168.1.50
+```
+
+Buka **http://127.0.0.1:18092/admin**. Jangan hubungkan staging ke domain atau reverse proxy produksi. Uji saldo awal satu SKU, checkout Ready + PO, penerimaan WO sebagian, serah terima, dan penguncian katalog dari jendela privat. Hentikan staging setelah uji dengan `sudo docker stop axindo-store-staging`; salinan staging tetap ada agar bisa dilanjutkan. Inventaris salinan uji tidak boleh dipulihkan ke produksi.
+
 ## Rilis image
 
 Push tag versi untuk membangun image multi-arsitektur melalui GitHub Actions:
