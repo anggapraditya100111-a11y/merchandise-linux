@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#102039">
   <title>Admin · AINET Merchandise</title>
-  <link rel="stylesheet" href="/styles.css?v=1.5.9">
-  <link rel="stylesheet" href="/theme.css?v=1.5.9">
-  <script src="/admin.js?v=1.5.9" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=2.0.0">
+  <link rel="stylesheet" href="/theme.css?v=2.0.0">
+  <script src="/admin.js?v=2.0.0" defer></script>
 </head>
 <body class="admin-body">
   <main id="login-view" class="login-shell">
@@ -35,6 +35,7 @@
       <nav aria-label="Menu admin">
         <button data-tab="orders" class="active">▤ <span>Pesanan</span></button>
         <button data-tab="products">□ <span>Data barang</span></button>
+        <button data-tab="inventory">▦ <span>Persediaan</span></button>
         <button data-tab="settings">⚙ <span>Pengaturan</span></button>
         <button data-tab="maintenance">⚙ <span>Pemeliharaan</span></button>
       </nav>
@@ -54,9 +55,9 @@
           <article><span>Pesanan hari ini</span><strong id="metric-today">0</strong></article>
           <article><span>Nominal bulan ini</span><strong id="metric-month">Rp0</strong></article>
         </div>
-        <div class="order-status-tabs" role="tablist" aria-label="Status pesanan"><button class="active" type="button" role="tab" aria-selected="true" data-order-status="PROCESSING">On proses <span id="processing-count">0</span></button><button type="button" role="tab" aria-selected="false" data-order-status="WORK_ORDERS">Work Order <span id="work-order-count">0</span></button><button type="button" role="tab" aria-selected="false" data-order-status="DONE">Selesai <span id="done-count">0</span></button></div>
+        <div class="order-status-tabs" role="tablist" aria-label="Status pesanan"><button class="active" type="button" role="tab" aria-selected="true" data-order-status="PROCESSING">On proses <span id="processing-count">0</span></button><button type="button" role="tab" aria-selected="false" data-order-status="PO">PO <span id="po-count">0</span></button><button type="button" role="tab" aria-selected="false" data-order-status="WORK_ORDERS">Work Order <span id="work-order-count">0</span></button><button type="button" role="tab" aria-selected="false" data-order-status="DONE">Selesai <span id="done-count">0</span></button></div>
         <div id="order-list-view">
-          <div id="work-order-selection" class="work-order-selection"><div><strong id="selected-order-count">0 pesanan dipilih</strong><small>Pilih order On proses yang akan digabungkan untuk vendor.</small></div><button id="create-work-order" class="button primary" type="button" disabled>+ Buat Work Order</button></div>
+          <div id="work-order-selection" class="work-order-selection"><div><strong id="selected-order-count">0 pesanan dipilih</strong><small>Pilih pesanan untuk vendor. Pada pesanan stok, hanya sisa PO yang belum dialokasikan ke vendor yang dimasukkan.</small></div><button id="create-work-order" class="button primary" type="button" disabled>+ Buat Work Order</button></div>
           <div class="admin-toolbar"><label class="search"><input id="order-search" type="search" placeholder="Cari nomor order, nama, PoP, WA…"></label><button id="export-orders" class="button secondary">↓ Unduh rekap CSV</button></div>
           <div class="table-wrap"><table><thead><tr><th class="select-order-column"><input id="select-all-orders" type="checkbox" aria-label="Pilih semua order yang tersedia"></th><th>No. order</th><th>Tanggal</th><th>Pemesan</th><th>PoP</th><th>Barang</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="orders-body"></tbody></table></div>
         </div>
@@ -71,15 +72,64 @@
         <div id="admin-products" class="admin-product-grid"></div>
       </section>
 
+      <section id="inventory-tab" class="tab-panel hidden">
+        <div class="admin-toolbar"><div><span class="kicker">Gudang pusat</span><h2>Persediaan per SKU</h2></div><button id="inventory-refresh" class="button secondary" type="button">Muat ulang</button></div>
+        <div id="inventory-metrics" class="metrics"></div>
+        <div class="inventory-panels">
+          <form id="inventory-variant" class="panel-form">
+            <h2>Produk &amp; varian</h2>
+            <label>Produk<select name="product" required></select></label>
+            <label>Varian<select name="variant"></select></label>
+            <p id="inventory-product-note" class="settings-intro"></p>
+            <div class="form-columns"><label>SKU<input name="sku" required maxlength="60"></label><label>Nama varian (opsional)<input name="label" maxlength="100" placeholder="Jika kosong: warna / ukuran"></label></div>
+            <div class="form-columns"><label>Warna<input name="color" maxlength="40"></label><label>Ukuran / nomor<input name="size" maxlength="40"></label></div>
+            <div class="form-columns"><label>Harga jual (Rp)<input name="price" type="number" min="0" max="1000000000" required></label><label>Harga perolehan awal (Rp)<input name="cost" type="number" min="0" max="1000000000" value="0" required></label></div>
+            <div class="form-columns"><label>Batas stok minimum<input name="minimum" type="number" min="0" max="1000000" value="0" required></label><label>Estimasi PO<input name="eta" maxlength="120" placeholder="Contoh: 7–10 hari kerja"></label></div>
+            <label class="check-field"><input name="allowPo" type="checkbox"> Izinkan PO saat stok kurang</label>
+            <label class="check-field"><input name="active" type="checkbox" checked> Varian aktif</label>
+            <div class="form-actions"><button class="button primary" type="submit">Simpan varian</button><button class="button secondary" id="inventory-enable" type="button">Aktifkan stok produk</button></div>
+          </form>
+          <form id="inventory-movement" class="panel-form">
+            <h2>Barang masuk &amp; stok opname</h2>
+            <label>Jenis pencatatan<select name="kind"><option value="RECEIPT">Barang masuk / saldo awal</option><option value="COUNT">Stok opname</option></select></label>
+            <label>SKU<select name="variantId" required></select></label>
+            <p id="inventory-movement-note" class="settings-intro"></p>
+            <label><span id="inventory-qty-label">Jumlah masuk</span><input name="quantity" type="number" min="1" max="1000000" required></label>
+            <div id="receipt-fields" class="product-form">
+              <div class="form-columns"><label>Harga perolehan (Rp/pcs)<input name="cost" type="number" min="0" max="1000000000" required></label><label>Supplier<input name="supplier" maxlength="120" required></label></div>
+              <label>Work Order vendor (opsional)<select name="workOrder"></select></label>
+            </div>
+            <div class="form-columns"><label>Tanggal dokumen<input name="eventOn" type="date"></label><label>No. nota / referensi<input name="reference" maxlength="160"></label></div>
+            <label>Keterangan / alasan<textarea name="note" maxlength="500" rows="2"></textarea></label>
+            <button class="button primary" type="submit">Konfirmasi pencatatan</button>
+          </form>
+        </div>
+        <div class="admin-toolbar"><h2>Saldo stok</h2><label class="search"><input id="inventory-search" type="search" placeholder="Cari SKU, nama produk, atau varian…"></label></div>
+        <div class="table-wrap"><table><thead><tr><th>SKU</th><th>Produk / Varian</th><th>Fisik</th><th>Dipesan</th><th>Tersedia</th><th>PO menunggu</th><th>Perolehan</th><th>Jual</th></tr></thead><tbody id="inventory-balances"></tbody></table></div>
+        <div class="admin-toolbar"><h2>Kartu stok</h2><span class="toolbar-note">250 pencatatan terbaru</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Waktu</th><th>SKU</th><th>Mutasi</th><th>Sebelum → sesudah</th><th>Referensi</th><th>Petugas</th><th>Keterangan</th></tr></thead><tbody id="inventory-movements"></tbody></table></div>
+      </section>
+
       <section id="settings-tab" class="tab-panel hidden">
         <div class="settings-layout">
           <nav class="settings-subnav" aria-label="Submenu pengaturan">
             <button class="active" data-settings-section="appearance">Identitas & tampilan</button>
             <button data-settings-section="pops">Data PoP</button>
             <button data-settings-section="categories">Kategori</button>
+            <button data-settings-section="catalog-access">Akses katalog</button>
           </nav>
 
           <div class="settings-content">
+            <section id="catalog-access-settings" class="settings-section hidden">
+              <form id="catalog-access-form" class="panel-form settings-form">
+                <h2>Akses katalog</h2>
+                <p class="settings-intro">Pengunjung memasukkan kata kunci sebelum melihat produk. Login admin tetap terpisah.</p>
+                <label class="check-field"><input name="enabled" type="checkbox"> Wajibkan kata kunci</label>
+                <label>Kata kunci baru<input name="keyword" type="password" minlength="12" maxlength="72" autocomplete="new-password"><small>Minimal 12 karakter. Kosongkan untuk mempertahankan kata kunci. Menggantinya mencabut sesi katalog yang lama.</small></label>
+                <label class="check-field"><input name="showQuantity" type="checkbox" checked> Tampilkan jumlah stok pada kartu produk</label>
+                <button class="button primary" type="submit">Simpan akses katalog</button>
+              </form>
+            </section>
             <section id="appearance-settings" class="settings-section">
               <form id="settings-form" class="panel-form settings-form">
                 <div><span class="kicker">Identitas aplikasi</span><h2>Nama, header, logo, dan warna</h2><p class="settings-intro">Perubahan diterapkan pada katalog, panel admin, dan PDF order.</p></div>

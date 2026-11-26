@@ -89,6 +89,7 @@ function renderOrderPdf(res, order, settings) {
     doc.fillColor("#657289").font("Helvetica").fontSize(9).text(`SKU: ${item.sku}`, 122, y + 31);
     const variant = item.variant ? `${item.variantLabel || "Ukuran/nomor"}: ${item.variant}` : "Tanpa ukuran/varian";
     doc.text(`${variant}  ·  ${item.quantity} pcs × ${rupiah(item.unitPrice)}`, 122, y + 48, { width: 295 });
+    if (item.stock) doc.fillColor("#0a3f8d").text(`Saat pesan: Ready ${item.stock.initialReady} · PO ${item.stock.initialPo}`, 122, y + 65, { width: 295 });
     doc.fillColor("#102039").font("Helvetica-Bold").fontSize(11).text(rupiah(item.subtotal), 410, y + 30, { width: 130, align: "right" });
     y += 90;
   }

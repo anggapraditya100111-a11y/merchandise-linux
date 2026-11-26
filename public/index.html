@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a3f8d">
   <title>AINET Merchandise</title>
-  <link rel="stylesheet" href="/styles.css?v=1.5.9">
-  <link rel="stylesheet" href="/theme.css?v=1.5.9">
-  <script src="/app.js?v=1.5.9" defer></script>
+  <link rel="stylesheet" href="/styles.css?v=2.0.0">
+  <link rel="stylesheet" href="/theme.css?v=2.0.0">
+  <script src="/app.js?v=2.0.0" defer></script>
 </head>
 <body>
+  <div id="catalog-content">
   <header class="site-header">
     <div class="header-inner">
       <a class="brand" href="/" aria-label="AINET Merchandise">
@@ -73,6 +74,21 @@
   </main>
 
   <footer class="footer"><strong data-app-name>AINET Merchandise</strong><span id="footer-company">Internal order catalog · PT Axindo Infinitas Network</span></footer>
+  </div>
+  <div id="catalog-lock" class="modal-backdrop hidden">
+    <section class="modal catalog-lock-card" role="dialog" aria-modal="true" aria-labelledby="catalog-lock-title">
+      <span class="kicker">AXINDO Store</span>
+      <h2 id="catalog-lock-title">Katalog internal</h2>
+      <p>Masukkan kata kunci untuk melihat produk dan membuat pesanan.</p>
+      <form id="catalog-unlock" class="product-form">
+        <label for="catalog-keyword">Kata kunci</label>
+        <input id="catalog-keyword" name="keyword" type="password" autocomplete="current-password" required maxlength="72">
+        <p id="catalog-lock-error" class="alert error hidden" role="alert"></p>
+        <button class="button primary" type="submit">Buka katalog</button>
+      </form>
+      <a class="admin-link" href="/admin">Masuk sebagai admin</a>
+    </section>
+  </div>
 
   <div id="success-backdrop" class="modal-backdrop hidden">
     <section class="modal success-modal" role="dialog" aria-modal="true" aria-labelledby="success-title">

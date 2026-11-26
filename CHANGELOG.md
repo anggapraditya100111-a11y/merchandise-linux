@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0 — calon rilis
+
+- Persediaan opsional per produk: SKU varian, saldo fisik, reservasi, harga jual, harga perolehan, batas minimum dan PO.
+- Checkout atomik dengan perincian Ready/PO. Work Order PO mendukung penerimaan sebagian tanpa menutup pesanan pemesan.
+- Serah terima, pembatalan item, opname dan kartu stok dengan petugas, referensi serta estimasi margin.
+- Kata kunci opsional untuk katalog dan foto; sesi pengunjung independen dari sesi admin, serta dapat dicabut dengan mengganti kata kunci.
+- Pesanan, Work Order dan data barang lama tetap kompatibel. Pembayaran tetap di luar situs.
+
 ## 1.5.9 — 2026-09-29
 
 - Tampilkan hanya Work Order yang masih diproses vendor pada tab **Work Order**.

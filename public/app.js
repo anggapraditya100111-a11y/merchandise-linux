@@ -90,13 +90,15 @@
     const products = state.category === "Semua" ? state.products : state.products.filter((product) => product.category === state.category);
     el("product-grid").innerHTML = products.map((product) => {
       const selected = state.variants[product.id] || product.variants[0] || "";
+      const stock = product.stockOptions?.find((option) => option.label === selected);
+      const status = stock && (stock.inStock ? (stock.available === null ? "Ready Stock" : `${stock.low ? "Tersisa" : "Tersedia"} ${stock.available} pcs`) : (stock.allowPo ? "Stok kosong · Bisa PO" : "Stok kosong"));
       const options = product.variants.map((variant) => `<option${variant === selected ? " selected" : ""}>${escapeHtml(variant)}</option>`).join("");
       return `<article class="product-card">
         ${productGallery(product)}
-        <div class="product-copy"><span class="product-category">${escapeHtml(product.category)}</span><h3>${escapeHtml(product.name)}</h3><p class="product-description">${escapeHtml(product.description)}</p><strong>${rupiah(product.price)}</strong></div>
+        <div class="product-copy"><span class="product-category">${escapeHtml(product.category)}</span><h3>${escapeHtml(product.name)}</h3><p class="product-description">${escapeHtml(product.description)}</p><strong>${rupiah(stock?.price ?? product.price)}</strong>${stock ? `<p class="stock-status ${stock.inStock ? "in-stock" : ""}">${status}${stock.allowPo && stock.eta ? ` · Estimasi PO: ${escapeHtml(stock.eta)}` : ""}</p>` : ""}</div>
         <div class="product-controls">
           ${product.variants.length ? `<label><span>${escapeHtml(product.variantLabel || "Ukuran/varian")}</span><select data-variant="${product.id}">${options}</select></label>` : `<span class="muted">Tanpa ukuran</span>`}
-          <button type="button" class="button primary" data-add="${product.id}">+ Tambah</button>
+          <button type="button" class="button primary" data-add="${product.id}"${stock && !stock.inStock && !stock.allowPo ? " disabled" : ""}>${stock && !stock.inStock && stock.allowPo ? "Pesan PO" : "+ Tambah"}</button>
         </div>
       </article>`;
     }).join("") || `<div class="loading-card">Belum ada barang pada kategori ini.</div>`;
@@ -153,8 +155,14 @@
   function totals() {
     return {
       count: state.cart.reduce((sum, item) => sum + item.quantity, 0),
-      total: state.cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0),
+      total: state.cart.reduce((sum, item) => sum + ((item.quote?.price ?? item.stock?.price ?? item.product.price) * item.quantity), 0),
     };
+  }
+
+  function cartStockLabel(item) {
+    if (!item.stock) return "";
+    const ready = item.quote?.ready ?? (item.stock.available == null ? null : Math.min(item.quantity, item.stock.available));
+    return ready == null ? "Stok diperiksa saat checkout" : `Ready: ${ready} · PO: ${item.quantity - ready}`;
   }
 
   function renderCart() {
@@ -166,7 +174,7 @@
     el("empty-cart").classList.toggle("hidden", Boolean(state.cart.length));
     el("cart-list").innerHTML = state.cart.map((item) => `<div class="cart-item">
       ${compactVisual(item.product)}
-      <div class="cart-copy"><strong>${escapeHtml(item.product.name)}</strong><small>${item.variant ? `${escapeHtml(item.product.variantLabel)}: ${escapeHtml(item.variant)}` : "Tanpa ukuran"}</small><span>${rupiah(item.product.price * item.quantity)}</span></div>
+      <div class="cart-copy"><strong>${escapeHtml(item.product.name)}</strong><small>${item.variant ? `${escapeHtml(item.product.variantLabel)}: ${escapeHtml(item.variant)}` : "Tanpa ukuran"}</small>${item.stock ? `<small>${cartStockLabel(item)}</small>` : ""}<span>${rupiah((item.quote?.price ?? item.stock?.price ?? item.product.price) * item.quantity)}</span></div>
       <div class="qty"><button type="button" data-qty="-1" data-key="${escapeHtml(item.key)}">${item.quantity === 1 ? "×" : "−"}</button><b>${item.quantity}</b><button type="button" data-qty="1" data-key="${escapeHtml(item.key)}">+</button></div>
     </div>`).join("");
   }
@@ -175,10 +183,12 @@
     const product = state.products.find((item) => item.id === productId);
     if (!product) return;
     const variant = state.variants[product.id] || product.variants[0] || "";
+    const stock = product.stockOptions?.find((option) => option.label === variant);
     const key = `${product.id}:${variant}`;
     const existing = state.cart.find((item) => item.key === key);
-    if (existing) existing.quantity += 1;
-    else state.cart.push({ key, product, variant, quantity: 1 });
+    if (existing) return changeQuantity(key, 1);
+    if (stock && !stock.inStock && !stock.allowPo) return;
+    state.cart.push({ key, product, variant, stock, quantity: 1 });
     renderCart();
     showError("order-error", "");
   }
@@ -186,16 +196,44 @@
   function changeQuantity(key, change) {
     const item = state.cart.find((cartItem) => cartItem.key === key);
     if (!item) return;
+    if (item.quantity + change > 99 || (change > 0 && item.stock && !item.stock.allowPo && item.stock.available != null && item.quantity + change > item.stock.available)) {
+      return showError("order-error", "Jumlah melebihi batas atau stok tersedia.");
+    }
     item.quantity += change;
+    item.quote = null;
     state.cart = state.cart.filter((cartItem) => cartItem.quantity > 0);
     renderCart();
   }
 
+  function setLocked(locked) {
+    const content = el("catalog-content");
+    content.inert = locked;
+    content.classList.toggle("catalog-blurred", locked);
+    el("catalog-lock").classList.toggle("hidden", !locked);
+    if (locked) {
+      state.products = [];
+      state.cart = [];
+      state.pops = [];
+      state.lightboxProduct = null;
+      el("success-backdrop").classList.add("hidden");
+      el("gallery-backdrop").classList.add("hidden");
+      el("lightbox-image").removeAttribute("src");
+      el("lightbox-thumbnails").replaceChildren();
+      el("pop-select").replaceChildren();
+      renderCart();
+      el("product-grid").replaceChildren();
+      document.querySelectorAll("[data-brand-mark]").forEach((target) => target.replaceChildren());
+      el("catalog-keyword").focus();
+    }
+  }
+
   async function loadCatalog() {
     try {
-      const response = await fetch("/api/catalog");
+      const response = await fetch("/api/catalog", { cache: "no-store" });
       const data = await response.json();
+      if (data.code === "CATALOG_LOCKED") return setLocked(true);
       if (!response.ok) throw new Error(data.error || "Katalog gagal dimuat.");
+      setLocked(false);
       state.products = data.products;
       state.pops = data.pops;
       state.variants = Object.fromEntries(data.products.map((product) => [product.id, product.variants[0] || ""]));
@@ -214,7 +252,7 @@
     const { order } = data;
     el("success-number").textContent = order.orderNumber;
     el("success-customer").innerHTML = `<div><span>${escapeHtml(order.customerName)}</span><small>${escapeHtml(order.popName)} · ${escapeHtml(order.whatsapp)}</small>${order.note ? `<small class="receipt-note">Catatan: ${escapeHtml(order.note)}</small>` : ""}</div><strong>${rupiah(order.total)}</strong>`;
-    el("success-items").innerHTML = order.items.map((item) => `<div class="receipt-item">${compactVisual({ name: item.productName, category: item.productName, imageUrl: item.imageUrl })}<div><strong>${escapeHtml(item.productName)}</strong><small>${item.variant ? `${escapeHtml(item.variantLabel || "Ukuran/nomor")}: ${escapeHtml(item.variant)}` : "Tanpa ukuran"} · ${item.quantity} pcs</small></div><span>${rupiah(item.subtotal)}</span></div>`).join("");
+    el("success-items").innerHTML = order.items.map((item) => `<div class="receipt-item">${compactVisual({ name: item.productName, category: item.productName, imageUrl: item.imageUrl })}<div><strong>${escapeHtml(item.productName)}</strong><small>${item.variant ? `${escapeHtml(item.variantLabel || "Ukuran/nomor")}: ${escapeHtml(item.variant)}` : "Tanpa ukuran"} · ${item.quantity} pcs</small>${item.stock ? `<small>Ready: ${item.stock.initialReady} · PO: ${item.stock.initialPo}</small>` : ""}</div><span>${rupiah(item.subtotal)}</span></div>`).join("");
     el("download-pdf").href = data.publicPdfUrl || data.pdfUrl;
     const whatsappButton = el("confirm-whatsapp");
     whatsappButton.classList.toggle("hidden", !data.whatsappUrl);
@@ -233,6 +271,27 @@
     button.textContent = "Menyimpan…";
     showError("order-error", "");
     try {
+      const snapshot = state.cart.map((item) => ({ ...item }));
+      const items = snapshot.map((item) => ({ productId: item.product.id, variant: item.variant, variantId: item.stock?.id, quantity: item.quantity }));
+      if (snapshot.some((item) => item.stock)) {
+        const quote = await fetch("/api/catalog/quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ items }) });
+        const data = await quote.json();
+        if (data.code === "CATALOG_LOCKED") return setLocked(true);
+        if (!quote.ok) throw new Error(data.error);
+        if (snapshot.length !== state.cart.length || snapshot.some((item, index) => item.key !== state.cart[index].key || item.quantity !== state.cart[index].quantity)) throw new Error("Keranjang berubah. Periksa kembali sebelum mengirim.");
+        data.items.forEach((line, index) => {
+          state.cart[index].quote = line;
+          items[index].expectedPo = line.po;
+          items[index].expectedPrice = line.price;
+        });
+        renderCart();
+        button.disabled = true;
+        const changes = data.items.some((line, index) => line.po > 0 || line.price !== (snapshot[index].stock?.price ?? snapshot[index].product.price));
+        if (changes) {
+          const list = data.items.map((line, index) => `${snapshot[index].product.name} ${snapshot[index].variant} — ${line.po == null ? "" : `Ready ${line.ready}, PO ${line.po} · `}${rupiah(line.price)} / pcs`);
+          if (!window.confirm(`Konfirmasi rincian pesanan:\n\n${list.join("\n")}\n\nKirim pesanan ini?`)) return;
+        }
+      }
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -241,16 +300,18 @@
           popId: form.get("popId"),
           whatsapp: form.get("whatsapp"),
           note: form.get("note"),
-          items: state.cart.map((item) => ({ productId: item.product.id, variant: item.variant, quantity: item.quantity })),
+          items,
         }),
       });
       const data = await response.json();
+      if (data.code === "CATALOG_LOCKED") return setLocked(true);
       if (!response.ok) throw new Error(data.error || "Pesanan gagal disimpan.");
       state.cart = [];
       renderCart();
       formElement.reset();
       el("note-count").textContent = "0/500";
       showSuccess(data);
+      void loadCatalog();
       if (data.whatsappUrl) window.setTimeout(() => { window.location.href = data.whatsappUrl; }, 650);
     } catch (error) {
       showError("order-error", error.message || "Pesanan gagal disimpan.");
@@ -273,7 +334,25 @@
     renderProducts();
   });
   el("product-grid").addEventListener("change", (event) => {
-    if (event.target.matches("[data-variant]")) state.variants[event.target.dataset.variant] = event.target.value;
+    if (!event.target.matches("[data-variant]")) return;
+    const id = event.target.dataset.variant;
+    state.variants[id] = event.target.value;
+    renderProducts();
+    document.querySelector(`[data-variant="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+  });
+  el("catalog-unlock").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    showError("catalog-lock-error", "");
+    try {
+      const response = await fetch("/api/catalog/unlock", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ keyword: form.elements.keyword.value }) });
+      if (!response.ok) throw new Error((await response.json()).error);
+      form.reset();
+      await loadCatalog();
+    } catch (error) { showError("catalog-lock-error", error.message || "Katalog gagal dibuka."); }
+    finally { button.disabled = false; }
   });
   el("product-grid").addEventListener("click", (event) => {
     const indexButton = event.target.closest("[data-slide-index]");

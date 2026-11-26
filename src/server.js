@@ -9,6 +9,8 @@ const { rateLimit } = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const db = require("./db");
 const auth = require("./auth");
+const inventory = require("./inventory");
+const catalogAccess = require("./catalog-access");
 const { renderOrderPdf, renderWorkOrderPdf } = require("./pdf");
 const { createFullBackup, restoreFullBackup } = require("./backup");
 
@@ -52,7 +54,14 @@ app.use(helmet({
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(cookieParser());
-app.use("/uploads", express.static(db.UPLOAD_DIR, { immutable: false, maxAge: "1h", dotfiles: "deny" }));
+function requireCatalog(req, res, next) {
+  res.set("Cache-Control", "private, no-store").vary("Cookie");
+  if (catalogAccess.config().enabled && !auth.verifyToken(req.cookies?.[auth.COOKIE_NAME]) && !catalogAccess.valid(req.cookies?.[catalogAccess.COOKIE])) {
+    return res.status(401).json({ code: "CATALOG_LOCKED", error: "Masukkan kata kunci untuk membuka katalog." });
+  }
+  next();
+}
+app.use("/uploads", requireCatalog, express.static(db.UPLOAD_DIR, { cacheControl: false, dotfiles: "deny" }));
 app.get("/theme.css", (_req, res) => {
   const settings = db.getSettings();
   res.type("text/css").set("Cache-Control", "no-store").send(`:root{--blue:${settings.primaryColor};--blue2:${settings.secondaryColor};--orange:${settings.accentColor}}`);
@@ -69,6 +78,8 @@ app.use(express.static(PUBLIC_DIR, {
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false });
 const orderLimiter = rateLimit({ windowMs: 10 * 60 * 1000, limit: 25, standardHeaders: true, legacyHeaders: false });
+const catalogLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false,
+  handler: (_req, res) => res.status(429).json({ error: "Terlalu banyak percobaan. Coba kembali nanti." }) });
 
 const imageStorage = multer.diskStorage({
   destination: (_req, _file, callback) => callback(null, db.UPLOAD_DIR),
@@ -222,6 +233,7 @@ function productInput(req) {
 }
 
 function errorResponse(res, error, fallback = "Permintaan tidak dapat diproses.") {
+  if (error instanceof inventory.InputError) return res.status(400).json({ error: error.message });
   const message = error instanceof Error ? error.message : fallback;
   const known = /harus|maksimal|tidak valid|tidak tersedia|sudah|kosong|dikenali|integritas|path|PoP|barang|kategori|gambar|warna|catatan|domain|URL|password|pesanan|WhatsApp|urutan|UNIQUE/i.test(message);
   return res.status(known ? 400 : 500).json({ error: known ? message : fallback });
@@ -253,12 +265,24 @@ app.get(["/.well-known/axindo-access.json", "/api/public/axindo-access.json"], (
   res.set("Cache-Control", "public, max-age=300, must-revalidate").json(accessManifest());
 });
 
-app.get("/api/catalog", (_req, res) => {
-  res.json({ products: db.listProducts({ activeOnly: true }), pops: db.listPops({ activeOnly: true }), settings: db.getSettings() });
+app.get("/api/catalog", requireCatalog, (_req, res) => {
+  const showQuantity = catalogAccess.config().showQuantity;
+  res.json({ products: inventory.publicProducts(db.getDatabase(), db.listProducts({ activeOnly: true }), showQuantity),
+    pops: db.listPops({ activeOnly: true }), settings: db.getSettings() });
 });
-app.get("/api/settings", (_req, res) => res.json({ settings: db.getSettings() }));
+app.get("/api/settings", requireCatalog, (_req, res) => res.json({ settings: db.getSettings() }));
+app.post("/api/catalog/unlock", catalogLimiter, auth.rejectCrossSite, async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  if (!catalogAccess.config().enabled || await catalogAccess.unlock(req, res)) return res.json({ ok: true });
+  res.status(401).json({ error: "Kata kunci tidak sesuai." });
+});
+app.post("/api/catalog/quote", requireCatalog, auth.rejectCrossSite, (req, res) => {
+  try {
+    res.json({ items: db.quoteOrder(Array.isArray(req.body?.items) ? req.body.items : []) });
+  } catch (error) { errorResponse(res, error, "Rincian keranjang tidak tersedia."); }
+});
 
-app.post("/api/orders", orderLimiter, auth.rejectCrossSite, (req, res) => {
+app.post("/api/orders", requireCatalog, orderLimiter, auth.rejectCrossSite, (req, res) => {
   try {
     const customerName = text(req.body.customerName, 2, 100, "Nama pemesan");
     const popId = text(req.body.popId, 4, 100, "PoP");
@@ -270,7 +294,7 @@ app.post("/api/orders", orderLimiter, auth.rejectCrossSite, (req, res) => {
     const pdfUrl = `/api/orders/${encodeURIComponent(order.orderNumber)}/pdf?token=${encodeURIComponent(order.pdfToken)}`;
     const requestBaseUrl = `${req.protocol}://${req.get("host")}`;
     const publicPdfUrl = new URL(pdfUrl, `${settings.publicBaseUrl || requestBaseUrl}/`).toString();
-    const itemLines = order.items.map((item) => `- ${item.productName}${item.variant ? ` (${item.variantLabel || "Pilihan"}: ${item.variant})` : ""} x${item.quantity} = Rp${new Intl.NumberFormat("id-ID").format(item.subtotal)}`);
+    const itemLines = order.items.map((item) => `- ${item.productName}${item.variant ? ` (${item.variantLabel || "Pilihan"}: ${item.variant})` : ""} x${item.quantity}${item.stock ? ` [Ready ${item.stock.initialReady}, PO ${item.stock.initialPo}]` : ""} = Rp${new Intl.NumberFormat("id-ID").format(item.subtotal)}`);
     const whatsappMessage = [
       `Konfirmasi pesanan merchandise ${order.orderNumber}`,
       `Nama: ${order.customerName}`,
@@ -296,6 +320,7 @@ app.post("/api/orders", orderLimiter, auth.rejectCrossSite, (req, res) => {
 });
 
 app.get("/api/orders/:number/pdf", (req, res) => {
+  res.set("Cache-Control", "private, no-store");
   const admin = auth.verifyToken(req.cookies?.[auth.COOKIE_NAME]);
   if (!admin && !db.verifyPdfToken(req.params.number, req.query.token)) return res.status(403).json({ error: "Tautan PDF tidak valid." });
   const order = db.getOrderByNumber(req.params.number);
@@ -439,6 +464,30 @@ app.get("/api/admin/products", auth.requireAdmin, (_req, res) => res.json({ prod
 app.get("/api/admin/pops", auth.requireAdmin, (_req, res) => res.json({ pops: db.listPops() }));
 app.get("/api/admin/categories", auth.requireAdmin, (_req, res) => res.json({ categories: db.listCategories() }));
 app.get("/api/admin/settings", auth.requireAdmin, (_req, res) => res.json({ settings: db.getSettings() }));
+app.get("/api/admin/catalog-access", auth.requireAdmin, (_req, res) => res.set("Cache-Control", "private, no-store").json(catalogAccess.config()));
+app.put("/api/admin/catalog-access", auth.requireAdmin, auth.rejectCrossSite, async (req, res) => {
+  try { res.json(await catalogAccess.save(req.body || {})); }
+  catch (error) { errorResponse(res, error, "Pengaturan akses gagal disimpan."); }
+});
+app.get("/api/admin/inventory", auth.requireAdmin, (_req, res) => res.set("Cache-Control", "private, no-store").json(inventory.report(db.getDatabase())));
+app.put("/api/admin/inventory/products/:id/variant", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try { res.json({ variant: inventory.saveVariant(db.getDatabase(), req.params.id, req.body || {}) }); }
+  catch (error) { errorResponse(res, error, "Varian gagal disimpan."); }
+});
+app.post("/api/admin/inventory/products/:id/enable", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try { inventory.enableProduct(db.getDatabase(), req.params.id); res.json({ ok: true }); }
+  catch (error) { errorResponse(res, error, "Stok gagal diaktifkan."); }
+});
+app.post("/api/admin/inventory/movements", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try { res.status(201).json({ variant: inventory.adjust(db.getDatabase(), req.body || {}, req.admin.username) }); }
+  catch (error) { errorResponse(res, error, "Mutasi stok gagal disimpan."); }
+});
+app.post("/api/admin/inventory/orders/:number/items/:item", auth.requireAdmin, auth.rejectCrossSite, (req, res) => {
+  try {
+    inventory.fulfill(db.getDatabase(), req.params.number, req.params.item, req.body || {}, req.admin.username);
+    res.json({ order: db.getOrderByNumber(req.params.number) });
+  } catch (error) { errorResponse(res, error, "Item gagal diperbarui."); }
+});
 
 app.post("/api/admin/products", auth.requireAdmin, auth.rejectCrossSite, imageUpload.array("images", 5), (req, res) => {
   try {

@@ -98,7 +98,7 @@ test("Work Order vendor merekap order terpilih dan menyediakan PDF", () => {
   assert.match(adminScript, /selectedOrderNumbers/);
   assert.match(adminScript, /aggregateWorkOrderItems/);
   assert.match(adminScript, /isUnassignedProcessingOrder/);
-  assert.match(adminScript, /state\.orderStatus === "PROCESSING" && !isUnassignedProcessingOrder\(order\)/);
+  assert.match(adminScript, /!isUnassignedProcessingOrder\(order\)\) return "WORK_ORDERS"/);
   assert.match(adminScript, /workOrder\.status === "VENDOR_PROCESSING"/);
   assert.match(adminScript, /state\.orderStatus = status === "DONE" \? "DONE" : "WORK_ORDERS"/);
   assert.match(adminScript, /class="work-order-link" data-work-order=/);

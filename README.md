@@ -4,7 +4,9 @@ Aplikasi katalog internal untuk pemesanan merchandise pegawai PoP. Pemesan tidak
 
 ## Fitur
 
-- Katalog publik tanpa login.
+- Katalog bisa dibuka tanpa akun pemesan; akses kata kunci bersifat opsional.
+- Akses katalog opsional dengan kata kunci dan pratinjau blur. Jika aktif, daftar barang, data katalog, checkout, serta unggahan hanya tersedia dengan sesi katalog atau admin. Tautan PDF pesanan tetap memakai token yang sudah ada.
+- Persediaan per SKU, reservasi, harga perolehan dan harga jual, Ready/PO, pencatatan barang masuk, stok opname, dan kartu stok.
 - Keranjang belanja tanpa sistem pembayaran.
 - Nama pemesan, asal PoP, nomor WhatsApp, dan catatan opsional maksimal 500 karakter.
 - Pilihan ukuran baju, nomor sepatu, atau varian lain langsung pada setiap barang.
@@ -192,6 +194,15 @@ docker build -t ainet-merchandise:test .
 ```
 
 Test otomatis memeriksa katalog, deskripsi multiline, kategori, galeri lima foto dan urutannya, pengaturan identitas/domain/WhatsApp, status order, Work Order dan PDF vendor, pengalihan WhatsApp, login reverse proxy, ubah password, hapus order, backup, restore, serta perlindungan path paket backup.
+
+## Panduan awal persediaan dan akses katalog
+
+1. Buat cadangan sebelum update. Coba terlebih dahulu dengan salinan database dan unggahan, bukan volume produksi.
+2. Di **Admin → Persediaan**, pilih produk, buat satu SKU untuk setiap kombinasi warna/ukuran, dan catat saldo awal melalui **Barang masuk / saldo awal**. Produk tanpa variasi cukup satu SKU. Aktifkan stok produk setelah SKU siap. Produk yang belum diaktifkan tetap memakai alur lama.
+3. Stok tersedia adalah stok fisik dikurangi reservasi. Sisa pesanan menjadi PO jika diizinkan dan dikonfirmasi pemesan. Masukkan sisa PO ke Work Order, terima per SKU, lalu catat serah terima dari detail pesanan. Penerimaan dialokasikan ke PO tertua; status vendor dan serah terima pelanggan terpisah. Work Order stok selesai setelah semua jumlah vendor diterima. Item stok tidak dapat dihapus dari riwayat.
+4. Atur kata kunci melalui **Admin → Pengaturan → Akses katalog**. Akses pengunjung bertahan 24 jam dan kata kunci baru mencabut sesi lama. Gunakan HTTPS di produksi dan jangan cache API, respons PDF atau unggahan yang sekarang dikunci. Jika proxy pernah menyimpan unggahan lama, bersihkan cache tersebut saat mengaktifkan fitur.
+
+Harga perolehan dihitung rata-rata tertimbang per SKU. Biaya pada serah terima disimpan untuk estimasi margin kotor; laporan ini bukan catatan pembayaran. Opname menolak jumlah di bawah reservasi aktif dan perubahan berdasarkan saldo yang sudah kedaluwarsa.
 
 ## Rilis image
 
